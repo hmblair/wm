@@ -57,7 +57,7 @@ func focusWindow(_ win: WindowInfo) {
 
     for axWindow in axWindows {
         var windowID: CGWindowID = 0
-        _AXUIElementGetWindow(axWindow, &windowID)
+        _ = _AXUIElementGetWindow(axWindow, &windowID)
         if windowID == win.id {
             AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
             AXUIElementSetAttributeValue(axWindow, kAXFocusedAttribute as CFString, kCFBooleanTrue)
