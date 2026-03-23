@@ -6,7 +6,7 @@ var lastTiledFrames: [UInt32: CGRect] = [:]
 func applyTiling(windows: [WindowInfo]) {
     let windowsByID = Dictionary(uniqueKeysWithValues: windows.map { ($0.id, $0) })
 
-    lastTiledFrames.removeAll()
+    var newFrames: [UInt32: CGRect] = [:]
     for (did, tree) in bspTrees {
         guard let screen = screenForDisplayID(did) else { continue }
         let rect = visibleFrame(for: screen)
@@ -15,9 +15,10 @@ func applyTiling(windows: [WindowInfo]) {
             if let win = windowsByID[id] {
                 setWindowFrame(win, frame: frame)
             }
-            lastTiledFrames[id] = frame
+            newFrames[id] = frame
         }
     }
+    lastTiledFrames = newFrames
 }
 
 func tileWindows(windows: [WindowInfo]) {

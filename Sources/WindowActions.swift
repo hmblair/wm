@@ -35,4 +35,5 @@ func warpMouse(to frame: CGRect) {
     let center = CGPoint(x: frame.midX, y: frame.midY)
     log("warp mouse to \(Int(center.x)),\(Int(center.y))")
     CGWarpMouseCursorPosition(center)
+    lastMousePosition = center
 }

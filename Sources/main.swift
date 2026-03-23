@@ -36,6 +36,17 @@ func elapsedNsSince(_ timestamp: UInt64) -> UInt64 {
     return (mach_absolute_time() - timestamp) * UInt64(machTimebaseInfo.numer) / UInt64(machTimebaseInfo.denom)
 }
 
+// --- Pending input state (written by event tap, consumed by poll loop) ---
+
+struct PendingKeyCommand {
+    let direction: Direction
+    let swap: Bool
+}
+
+var pendingKeyCommands: [PendingKeyCommand] = []
+var lastMousePosition: CGPoint = .zero
+var pendingMouseUp = false
+
 // --- Focus/navigation handlers ---
 
 func handleFocusDirection(_ direction: Direction, focused: FocusedWindowInfo, windows: [WindowInfo]) {
@@ -78,9 +89,7 @@ var lastFocusedWindow: UInt32 = 0
 var lastSelfFocusTime: UInt64 = 0
 let selfFocusCooldownNs: UInt64 = 150_000_000 // 150ms
 
-func handleMouseMoved(_ event: CGEvent, windows: [WindowInfo]) {
-    let pos = event.location
-
+func handleMousePosition(_ pos: CGPoint, windows: [WindowInfo]) {
     for win in windows {
         if win.frame.contains(pos) {
             if win.id != lastFocusedWindow {
@@ -89,7 +98,7 @@ func handleMouseMoved(_ event: CGEvent, windows: [WindowInfo]) {
                 lastSelfFocusTime = mach_absolute_time()
                 focusWindow(win)
             }
-            break
+            return
         }
     }
 }
@@ -131,7 +140,7 @@ if CommandLine.arguments.contains("--dump") {
     exit(0)
 }
 
-// --- Event tap + run loop ---
+// --- Event tap (captures input only, no data polling) ---
 
 var globalTap: CFMachPort?
 
@@ -144,9 +153,11 @@ func handleEvent(
         return Unmanaged.passUnretained(event)
     }
 
-    let windows = getOnScreenWindows()
-
-    if type == .keyDown {
+    if type == .mouseMoved {
+        lastMousePosition = event.location
+    } else if type == .leftMouseUp {
+        pendingMouseUp = true
+    } else if type == .keyDown {
         let flags = event.flags
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
         if let direction = directionFromKeyCode(keyCode) {
@@ -154,22 +165,13 @@ func handleEvent(
             let hasShift = flags.contains(.maskShift)
             let noOtherMods = !flags.contains(.maskControl) && !flags.contains(.maskAlternate)
 
-            if hasCmd && noOtherMods, let focused = getFocusedWindowInfo() {
-                if !hasShift {
-                    handleFocusDirection(direction, focused: focused, windows: windows)
-                } else {
-                    handleSwapDirection(direction, focused: focused, windows: windows)
-                }
+            if hasCmd && noOtherMods {
+                pendingKeyCommands.append(PendingKeyCommand(direction: direction, swap: hasShift))
                 return nil
             }
         }
     }
 
-    if type == .leftMouseUp {
-        snapBackDisplacedWindows(windows: windows)
-    } else if type == .mouseMoved {
-        handleMouseMoved(event, windows: windows)
-    }
     return Unmanaged.passUnretained(event)
 }
 
@@ -191,12 +193,41 @@ let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
 CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
 CGEvent.tapEnable(tap: tap, enable: true)
 
+// --- Main loop: snapshot once, process all pending input ---
+
 let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     CFAbsoluteTimeGetCurrent(), 0.05, 0, 0) { _ in
     let windows = getOnScreenWindows()
-    if let focused = getFocusedWindowInfo() {
+    let focused = getFocusedWindowInfo()
+
+    // Process queued key commands
+    let commands = pendingKeyCommands
+    pendingKeyCommands.removeAll()
+    if let focused = focused {
+        for cmd in commands {
+            if cmd.swap {
+                handleSwapDirection(cmd.direction, focused: focused, windows: windows)
+            } else {
+                handleFocusDirection(cmd.direction, focused: focused, windows: windows)
+            }
+        }
+    }
+
+    // Process mouse-up snap-back
+    if pendingMouseUp {
+        pendingMouseUp = false
+        snapBackDisplacedWindows(windows: windows)
+    }
+
+    // Focus-follows-mouse
+    handleMousePosition(lastMousePosition, windows: windows)
+
+    // External focus tracking
+    if let focused = focused {
         checkExternalFocusChange(focused: focused)
     }
+
+    // Tiling
     tileWindows(windows: windows)
 }
 CFRunLoopAddTimer(CFRunLoopGetCurrent(), pollTimer, .commonModes)
