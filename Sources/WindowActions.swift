@@ -1,6 +1,8 @@
 import Cocoa
 import ApplicationServices
 
+private let sizeTolerance: CGFloat = 2
+
 func focusWindow(_ win: ManagedWindow) {
     if let runningApp = NSRunningApplication(processIdentifier: win.pid) {
         runningApp.activate()
@@ -43,7 +45,7 @@ func setWindowFrame(_ win: ManagedWindow, frame: CGRect) {
 
     let dw = clampedFrame.width - actualSize.width
     let dh = clampedFrame.height - actualSize.height
-    if dw > 2 || dh > 2 {
+    if dw > sizeTolerance || dh > sizeTolerance {
         var centered = CGPoint(x: clampedFrame.origin.x + dw / 2, y: clampedFrame.origin.y + dh / 2)
         if let posValue = AXValueCreate(.cgPoint, &centered) {
             AXUIElementSetAttributeValue(win.axWindow, kAXPositionAttribute as CFString, posValue)

@@ -12,6 +12,8 @@ func directionFromKeyCode(_ keyCode: UInt16) -> Direction? {
     }
 }
 
+private let directionThreshold: CGFloat = 10
+
 func nearestWindow(from source: CGRect, direction: Direction, among windows: [ManagedWindow]) -> ManagedWindow? {
     let center = CGPoint(x: source.midX, y: source.midY)
     var best: ManagedWindow?
@@ -24,10 +26,10 @@ func nearestWindow(from source: CGRect, direction: Direction, among windows: [Ma
 
         let inDirection: Bool
         switch direction {
-        case .left:  inDirection = dx < -10
-        case .right: inDirection = dx > 10
-        case .up:    inDirection = dy < -10
-        case .down:  inDirection = dy > 10
+        case .left:  inDirection = dx < -directionThreshold
+        case .right: inDirection = dx > directionThreshold
+        case .up:    inDirection = dy < -directionThreshold
+        case .down:  inDirection = dy > directionThreshold
         }
         guard inDirection else { continue }
 

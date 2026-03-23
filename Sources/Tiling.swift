@@ -1,5 +1,7 @@
 import CoreGraphics
 
+private let frameTolerance: CGFloat = 2
+
 struct DisplaySpaceKey: Hashable {
     let displayID: CGDirectDisplayID
     let spaceID: CGSSpaceID
@@ -85,15 +87,42 @@ func tileWindows(spaceID: CGSSpaceID) {
     }
 }
 
+func handleWindowResizes(snapshots: [WindowInfo], spaceID: CGSSpaceID) {
+    guard tilingEnabled else { return }
+    var needsRetile = false
+
+    for snapshot in snapshots {
+        guard let managed = managedWindows[snapshot.id],
+              managed.tileFrame != nil else { continue }
+
+        let sizeDiffers = abs(snapshot.frame.width - managed.frame.width) > frameTolerance
+            || abs(snapshot.frame.height - managed.frame.height) > frameTolerance
+        guard sizeDiffers else { continue }
+
+        let center = CGPoint(x: managed.frame.midX, y: managed.frame.midY)
+        let did = displayID(for: center)
+        let key = DisplaySpaceKey(displayID: did, spaceID: spaceID)
+        if let tree = bspTrees[key], let screen = screenForDisplayID(did) {
+            let rect = visibleFrame(for: screen)
+            log("resize \(managed.id) (\(managed.name)) — adjusting split ratio")
+            bspTrees[key] = tree.adjustingRatioForResize(
+                windowID: managed.id, newFrame: snapshot.frame, rect: rect, gap: config.gap)
+            needsRetile = true
+        }
+    }
+
+    if needsRetile {
+        applyTiling(spaceID: spaceID)
+    }
+}
+
 func snapBackDisplacedWindows(snapshots: [WindowInfo]) {
     guard tilingEnabled else { return }
     for snapshot in snapshots {
         guard let managed = managedWindows[snapshot.id],
               let tileRect = managed.tileFrame else { continue }
-        if abs(snapshot.frame.origin.x - managed.frame.origin.x) > 2
-            || abs(snapshot.frame.origin.y - managed.frame.origin.y) > 2
-            || abs(snapshot.frame.width - managed.frame.width) > 2
-            || abs(snapshot.frame.height - managed.frame.height) > 2 {
+        if abs(snapshot.frame.origin.x - managed.frame.origin.x) > frameTolerance
+            || abs(snapshot.frame.origin.y - managed.frame.origin.y) > frameTolerance {
             log("snapping back \(managed.id) (\(managed.name))")
             setWindowFrame(managed, frame: tileRect)
         }

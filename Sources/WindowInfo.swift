@@ -20,6 +20,7 @@ struct FocusedWindowInfo {
     let name: String
 }
 
+private let minWindowDimension: CGFloat = 50
 let ignoredApps: Set<String> = ["borders", "Hammerspoon", "Alfred", "Raycast"]
 
 struct OnScreenSnapshot {
@@ -48,7 +49,7 @@ func getOnScreenWindows() -> OnScreenSnapshot {
             x: boundsDict["X"] ?? 0, y: boundsDict["Y"] ?? 0,
             width: boundsDict["Width"] ?? 0, height: boundsDict["Height"] ?? 0
         )
-        if frame.width < 50 || frame.height < 50 { continue }
+        if frame.width < minWindowDimension || frame.height < minWindowDimension { continue }
 
         allWindowsByPid[pid, default: []].append((id: id, frame: frame))
 

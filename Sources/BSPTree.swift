@@ -113,6 +113,57 @@ indirect enum BSPTree {
         return nil
     }
 
+    /// Adjusts the split ratio at the level containing `windowID` based on
+    /// the window's new frame after a user resize.
+    func adjustingRatioForResize(windowID: UInt32, newFrame: CGRect, rect: CGRect, gap: CGFloat) -> BSPTree {
+        guard case .split(let left, let right, let vertical, let ratio) = self else { return self }
+
+        let inLeft = left.contains(id: windowID)
+        guard inLeft || right.contains(id: windowID) else { return self }
+
+        // Compute current sub-rects
+        let (leftRect, rightRect): (CGRect, CGRect)
+        if vertical {
+            let leftW = rect.width * ratio
+            leftRect = CGRect(x: rect.minX, y: rect.minY, width: leftW, height: rect.height)
+            rightRect = CGRect(x: rect.minX + leftW, y: rect.minY, width: rect.width - leftW, height: rect.height)
+        } else {
+            let leftH = rect.height * ratio
+            leftRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: leftH)
+            rightRect = CGRect(x: rect.minX, y: rect.minY + leftH, width: rect.width, height: rect.height - leftH)
+        }
+
+        let child = inLeft ? left : right
+        let childRect = inLeft ? leftRect : rightRect
+
+        // Recurse if window is deeper in the tree
+        if case .split = child {
+            let adjusted = child.adjustingRatioForResize(windowID: windowID, newFrame: newFrame, rect: childRect, gap: gap)
+            return inLeft
+                ? .split(left: adjusted, right: right, vertical: vertical, ratio: ratio)
+                : .split(left: left, right: adjusted, vertical: vertical, ratio: ratio)
+        }
+
+        // Window is a direct leaf child — compute new ratio from the resized edge
+        var newRatio = ratio
+        if vertical {
+            if inLeft {
+                newRatio = (newFrame.maxX + gap - rect.minX) / rect.width
+            } else {
+                newRatio = (newFrame.minX - gap - rect.minX) / rect.width
+            }
+        } else {
+            if inLeft {
+                newRatio = (newFrame.maxY + gap - rect.minY) / rect.height
+            } else {
+                newRatio = (newFrame.minY - gap - rect.minY) / rect.height
+            }
+        }
+
+        newRatio = max(config.minSplitRatio, min(config.maxSplitRatio, newRatio))
+        return .split(left: left, right: right, vertical: vertical, ratio: newRatio)
+    }
+
     /// Returns the minimum size this subtree needs along each axis,
     /// given the min sizes of individual windows.
     func minSize(minSizes: [UInt32: CGSize], gap: CGFloat) -> CGSize {
@@ -137,7 +188,7 @@ indirect enum BSPTree {
         switch self {
         case .leaf:
             return self
-        case .split(let left, let right, let vertical, _):
+        case .split(let left, let right, let vertical, let existingRatio):
             let lm = left.minSize(minSizes: minSizes, gap: gap)
             let rm = right.minSize(minSizes: minSizes, gap: gap)
 
@@ -154,8 +205,8 @@ indirect enum BSPTree {
                 rightMin = rm.height
             }
 
-            // Start at 0.5, then clamp so both sides get at least their minimum
-            var ratio: CGFloat = 0.5
+            // Preserve existing ratio, only clamp for minimum size constraints
+            var ratio = existingRatio
             if total > 0 {
                 let minRatio = leftMin / total
                 let maxRatio = (total - rightMin) / total

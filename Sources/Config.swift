@@ -4,6 +4,9 @@ import TOMLKit
 
 struct Config: Codable {
     var gap: CGFloat = 8
+    var pollInterval: CFTimeInterval = 0.016
+    var minSplitRatio: CGFloat = 0.1
+    var maxSplitRatio: CGFloat = 0.9
 
     static let defaultPath: String = {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -18,6 +21,15 @@ struct Config: Codable {
             gap = CGFloat(v)
         } else if let v = try? container.decode(Int.self, forKey: .gap) {
             gap = CGFloat(v)
+        }
+        if let v = try? container.decode(Double.self, forKey: .pollInterval) {
+            pollInterval = v
+        }
+        if let v = try? container.decode(Double.self, forKey: .minSplitRatio) {
+            minSplitRatio = CGFloat(v)
+        }
+        if let v = try? container.decode(Double.self, forKey: .maxSplitRatio) {
+            maxSplitRatio = CGFloat(v)
         }
     }
 }

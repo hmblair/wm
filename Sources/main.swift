@@ -88,7 +88,7 @@ func handleSwapDirection(_ direction: Direction, focused info: FocusedWindowInfo
 
 var lastFocusedWindow: UInt32 = 0
 var lastSelfFocusTime: UInt64 = 0
-let selfFocusCooldownNs: UInt64 = 150_000_000 // 150ms
+private let selfFocusCooldownNs: UInt64 = 150_000_000
 
 func handleMousePosition(_ pos: CGPoint, spaceID: CGSSpaceID) {
     for win in managedWindows.values where win.spaceID == spaceID {
@@ -135,8 +135,9 @@ func checkExternalFocusChange(focused: FocusedWindowInfo) {
 // --- Debug dump ---
 
 if CommandLine.arguments.contains("--dump") {
-    fputs("Dumping in 3 seconds — switch to the window you want to inspect.\n", stderr)
-    Thread.sleep(forTimeInterval: 3)
+    let dumpDelay: TimeInterval = 3
+    fputs("Dumping in \(Int(dumpDelay)) seconds — switch to the window you want to inspect.\n", stderr)
+    Thread.sleep(forTimeInterval: dumpDelay)
     guard let frontApp = NSWorkspace.shared.frontmostApplication else {
         fputs("no frontmost app\n", stderr); exit(1)
     }
@@ -211,7 +212,7 @@ CGEvent.tapEnable(tap: tap, enable: true)
 // --- Main loop: snapshot once, reconcile, process all pending input ---
 
 let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
-    CFAbsoluteTimeGetCurrent(), 0.05, 0, 0) { _ in
+    CFAbsoluteTimeGetCurrent(), config.pollInterval, 0, 0) { _ in
     let snapshot = getOnScreenWindows()
     let focused = getFocusedWindowInfo()
     let spaceID = activeSpaceID()
@@ -231,11 +232,14 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
         }
     }
 
-    // Process mouse-up snap-back
+    // Process mouse-up snap-back (moves only)
     if pendingMouseUp {
         pendingMouseUp = false
         snapBackDisplacedWindows(snapshots: snapshot.managed)
     }
+
+    // Real-time resize handling
+    handleWindowResizes(snapshots: snapshot.managed, spaceID: spaceID)
 
     // Focus-follows-mouse
     handleMousePosition(lastMousePosition, spaceID: spaceID)
