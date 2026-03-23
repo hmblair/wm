@@ -53,8 +53,6 @@ func handleFocusDirection(_ direction: Direction, focused: FocusedWindowInfo, wi
     let candidates = windows.filter { $0.id != focused.id }
     guard let target = nearestWindow(from: focused.frame, direction: direction, among: candidates) else { return }
     log("cmd+arrow focus: \(target.id) (\(target.name))")
-    lastFocusedWindow = target.id
-    lastSelfFocusTime = mach_absolute_time()
     focusWindow(target)
     warpMouse(to: target.frame)
 }
@@ -90,12 +88,27 @@ var lastSelfFocusTime: UInt64 = 0
 let selfFocusCooldownNs: UInt64 = 150_000_000 // 150ms
 
 func handleMousePosition(_ pos: CGPoint, windows: [WindowInfo]) {
+    // Use lastTiledFrames for hit-testing when tiling is active — these
+    // reflect post-swap positions even within the same tick
+    if tilingEnabled {
+        for (id, frame) in lastTiledFrames {
+            if frame.contains(pos) {
+                if id != lastFocusedWindow {
+                    if let win = windows.first(where: { $0.id == id }) {
+                        log("mouse focus: \(win.id) (\(win.name)) at \(Int(pos.x)),\(Int(pos.y))")
+                        focusWindow(win)
+                    }
+                }
+                return
+            }
+        }
+    }
+
+    // Tiling off or cursor outside all tiles
     for win in windows {
         if win.frame.contains(pos) {
             if win.id != lastFocusedWindow {
                 log("mouse focus: \(win.id) (\(win.name)) at \(Int(pos.x)),\(Int(pos.y))")
-                lastFocusedWindow = win.id
-                lastSelfFocusTime = mach_absolute_time()
                 focusWindow(win)
             }
             return
@@ -219,7 +232,8 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
         snapBackDisplacedWindows(windows: windows)
     }
 
-    // Focus-follows-mouse
+    // Focus-follows-mouse — use lastTiledFrames for hit-testing when
+    // tiling is active, since it reflects post-swap positions
     handleMousePosition(lastMousePosition, windows: windows)
 
     // External focus tracking

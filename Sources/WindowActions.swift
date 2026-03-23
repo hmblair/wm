@@ -13,6 +13,8 @@ func focusWindow(_ win: WindowInfo) {
 
     AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
     AXUIElementSetAttributeValue(axWindow, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    lastFocusedWindow = win.id
+    lastSelfFocusTime = mach_absolute_time()
 }
 
 func setWindowFrame(_ win: WindowInfo, frame: CGRect) {
