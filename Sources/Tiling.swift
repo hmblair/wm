@@ -14,10 +14,15 @@ func applyTiling(spaceID: CGSSpaceID) {
         win.tileFrame = nil
     }
 
+    let minSizes = Dictionary(uniqueKeysWithValues:
+        managedWindows.values.map { ($0.id, $0.minSize) })
+
     for (key, tree) in bspTrees where key.spaceID == spaceID {
         guard let screen = screenForDisplayID(key.displayID) else { continue }
         let rect = visibleFrame(for: screen)
-        let frames = tree.computeFrames(rect: rect, gap: config.gap)
+        let adjusted = tree.adjustingRatios(rect: rect, minSizes: minSizes, gap: config.gap)
+        bspTrees[key] = adjusted
+        let frames = adjusted.computeFrames(rect: rect, gap: config.gap)
         for (id, tileRect) in frames {
             if let win = managedWindows[id] {
                 win.tileFrame = tileRect

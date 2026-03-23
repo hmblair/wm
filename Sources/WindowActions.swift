@@ -13,8 +13,17 @@ func focusWindow(_ win: ManagedWindow) {
 }
 
 func setWindowFrame(_ win: ManagedWindow, frame: CGRect) {
-    var position = frame.origin
-    var size = CGSize(width: frame.width, height: frame.height)
+    // Clamp frame to minimum size (from popups or other constraints), centered in tile
+    let minW = max(frame.width, win.minSize.width)
+    let minH = max(frame.height, win.minSize.height)
+    let clampedFrame = CGRect(
+        x: frame.origin.x - (minW - frame.width) / 2,
+        y: frame.origin.y - (minH - frame.height) / 2,
+        width: minW, height: minH
+    )
+
+    var position = clampedFrame.origin
+    var size = clampedFrame.size
     if let posValue = AXValueCreate(.cgPoint, &position) {
         AXUIElementSetAttributeValue(win.axWindow, kAXPositionAttribute as CFString, posValue)
     }
@@ -22,26 +31,26 @@ func setWindowFrame(_ win: ManagedWindow, frame: CGRect) {
         AXUIElementSetAttributeValue(win.axWindow, kAXSizeAttribute as CFString, sizeValue)
     }
 
-    // Read back actual size — the window may have refused to resize
+    // Read back actual size — the window may have refused to resize further
     var actualSizeRef: CFTypeRef?
     guard AXUIElementCopyAttributeValue(win.axWindow, kAXSizeAttribute as CFString, &actualSizeRef) == .success,
           let sRef = actualSizeRef else {
-        win.frame = frame
+        win.frame = clampedFrame
         return
     }
     var actualSize = CGSize.zero
     AXValueGetValue(sRef as! AXValue, .cgSize, &actualSize)
 
-    let dw = frame.width - actualSize.width
-    let dh = frame.height - actualSize.height
+    let dw = clampedFrame.width - actualSize.width
+    let dh = clampedFrame.height - actualSize.height
     if dw > 2 || dh > 2 {
-        var centered = CGPoint(x: frame.origin.x + dw / 2, y: frame.origin.y + dh / 2)
+        var centered = CGPoint(x: clampedFrame.origin.x + dw / 2, y: clampedFrame.origin.y + dh / 2)
         if let posValue = AXValueCreate(.cgPoint, &centered) {
             AXUIElementSetAttributeValue(win.axWindow, kAXPositionAttribute as CFString, posValue)
         }
         win.frame = CGRect(origin: centered, size: actualSize)
     } else {
-        win.frame = frame
+        win.frame = clampedFrame
     }
 }
 

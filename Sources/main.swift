@@ -50,18 +50,18 @@ var pendingMouseUp = false
 
 // --- Focus/navigation handlers ---
 
-func handleFocusDirection(_ direction: Direction, focusedID: UInt32, spaceID: CGSSpaceID) {
-    guard let focused = managedWindows[focusedID] else { return }
-    let candidates = managedWindows.values.filter { $0.id != focusedID && $0.spaceID == spaceID }
+func handleFocusDirection(_ direction: Direction, focused info: FocusedWindowInfo, spaceID: CGSSpaceID) {
+    guard let focused = resolveManaged(for: info) else { return }
+    let candidates = managedWindows.values.filter { $0.id != focused.id && $0.spaceID == spaceID }
     guard let target = nearestWindow(from: focused.frame, direction: direction, among: Array(candidates)) else { return }
     log("cmd+arrow focus: \(target.id) (\(target.name))")
     focusWindow(target)
     warpMouse(to: target.frame)
 }
 
-func handleSwapDirection(_ direction: Direction, focusedID: UInt32, spaceID: CGSSpaceID) {
+func handleSwapDirection(_ direction: Direction, focused info: FocusedWindowInfo, spaceID: CGSSpaceID) {
     guard tilingEnabled else { return }
-    guard let focused = managedWindows[focusedID] else { return }
+    guard let focused = resolveManaged(for: info) else { return }
 
     let focusCenter = CGPoint(x: focused.frame.midX, y: focused.frame.midY)
     let did = displayID(for: focusCenter)
@@ -135,7 +135,7 @@ if CommandLine.arguments.contains("--dump") {
     }
 
     print("\nCG on-screen windows:")
-    for win in getOnScreenWindows() {
+    for win in getOnScreenWindows().managed {
         print("  [\(win.id)] \(win.name) — pos=\(Int(win.frame.origin.x)),\(Int(win.frame.origin.y)) size=\(Int(win.frame.width))x\(Int(win.frame.height))")
     }
     exit(0)
@@ -198,11 +198,11 @@ CGEvent.tapEnable(tap: tap, enable: true)
 
 let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     CFAbsoluteTimeGetCurrent(), 0.05, 0, 0) { _ in
-    let snapshots = getOnScreenWindows()
+    let snapshot = getOnScreenWindows()
     let focused = getFocusedWindowInfo()
     let spaceID = activeSpaceID()
 
-    reconcileWindows(snapshots: snapshots)
+    reconcileWindows(snapshot: snapshot)
 
     // Process queued key commands
     let commands = pendingKeyCommands
@@ -210,9 +210,9 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     if let focused = focused {
         for cmd in commands {
             if cmd.swap {
-                handleSwapDirection(cmd.direction, focusedID: focused.id, spaceID: spaceID)
+                handleSwapDirection(cmd.direction, focused: focused, spaceID: spaceID)
             } else {
-                handleFocusDirection(cmd.direction, focusedID: focused.id, spaceID: spaceID)
+                handleFocusDirection(cmd.direction, focused: focused, spaceID: spaceID)
             }
         }
     }
@@ -220,7 +220,7 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     // Process mouse-up snap-back
     if pendingMouseUp {
         pendingMouseUp = false
-        snapBackDisplacedWindows(snapshots: snapshots)
+        snapBackDisplacedWindows(snapshots: snapshot.managed)
     }
 
     // Focus-follows-mouse
