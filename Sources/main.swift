@@ -173,81 +173,220 @@ let tileGap: CGFloat = 8
 func visibleFrame(for screen: NSScreen) -> CGRect {
     let full = screen.frame
     let visible = screen.visibleFrame
-    // Convert from NSScreen (bottom-left origin) to CG (top-left origin)
     let y = full.height - visible.maxY
     return CGRect(x: visible.minX, y: y, width: visible.width, height: visible.height)
 }
 
-func bspLayout(windows: Int, rect: CGRect, splitVertical: Bool) -> [CGRect] {
-    guard windows > 0 else { return [] }
-    if windows == 1 {
-        return [CGRect(
-            x: rect.minX + tileGap,
-            y: rect.minY + tileGap,
-            width: rect.width - 2 * tileGap,
-            height: rect.height - 2 * tileGap
-        )]
+indirect enum BSPTree {
+    case leaf(id: UInt32)
+    case split(left: BSPTree, right: BSPTree, vertical: Bool)
+
+    var windowIDs: [UInt32] {
+        switch self {
+        case .leaf(let id): return [id]
+        case .split(let l, let r, _): return l.windowIDs + r.windowIDs
+        }
     }
 
-    let leftCount = (windows + 1) / 2
-    let rightCount = windows / 2
-
-    var leftRect: CGRect
-    var rightRect: CGRect
-
-    if splitVertical {
-        let halfW = rect.width / 2
-        leftRect = CGRect(x: rect.minX, y: rect.minY, width: halfW, height: rect.height)
-        rightRect = CGRect(x: rect.minX + halfW, y: rect.minY, width: halfW, height: rect.height)
-    } else {
-        let halfH = rect.height / 2
-        leftRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: halfH)
-        rightRect = CGRect(x: rect.minX, y: rect.minY + halfH, width: rect.width, height: halfH)
+    func contains(id: UInt32) -> Bool {
+        switch self {
+        case .leaf(let wid): return wid == id
+        case .split(let l, let r, _): return l.contains(id: id) || r.contains(id: id)
+        }
     }
 
-    return bspLayout(windows: leftCount, rect: leftRect, splitVertical: !splitVertical)
-         + bspLayout(windows: rightCount, rect: rightRect, splitVertical: !splitVertical)
+    func computeFrames(rect: CGRect) -> [(UInt32, CGRect)] {
+        switch self {
+        case .leaf(let id):
+            return [(id, CGRect(x: rect.minX + tileGap, y: rect.minY + tileGap,
+                                width: rect.width - 2 * tileGap, height: rect.height - 2 * tileGap))]
+        case .split(let left, let right, let vertical):
+            let (leftRect, rightRect): (CGRect, CGRect)
+            if vertical {
+                let halfW = rect.width / 2
+                leftRect = CGRect(x: rect.minX, y: rect.minY, width: halfW, height: rect.height)
+                rightRect = CGRect(x: rect.minX + halfW, y: rect.minY, width: halfW, height: rect.height)
+            } else {
+                let halfH = rect.height / 2
+                leftRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: halfH)
+                rightRect = CGRect(x: rect.minX, y: rect.minY + halfH, width: rect.width, height: halfH)
+            }
+            return left.computeFrames(rect: leftRect) + right.computeFrames(rect: rightRect)
+        }
+    }
+
+    func swappingWindows(_ id1: UInt32, _ id2: UInt32) -> BSPTree {
+        switch self {
+        case .leaf(let id):
+            if id == id1 { return .leaf(id: id2) }
+            if id == id2 { return .leaf(id: id1) }
+            return self
+        case .split(let l, let r, let v):
+            return .split(left: l.swappingWindows(id1, id2),
+                          right: r.swappingWindows(id1, id2), vertical: v)
+        }
+    }
+
+    // Remove a window from the tree. If a split node ends up with only one
+    // child, collapse it to that child.
+    func removing(id: UInt32) -> BSPTree? {
+        switch self {
+        case .leaf(let wid): return wid == id ? nil : self
+        case .split(let l, let r, let v):
+            let newL = l.removing(id: id)
+            let newR = r.removing(id: id)
+            if let nl = newL, let nr = newR {
+                return .split(left: nl, right: nr, vertical: v)
+            }
+            return newL ?? newR
+        }
+    }
+
+    // Insert a window as a new leaf, splitting the last leaf.
+    func appending(id: UInt32, splitVertical: Bool) -> BSPTree {
+        switch self {
+        case .leaf(let existing):
+            return .split(left: .leaf(id: existing), right: .leaf(id: id), vertical: splitVertical)
+        case .split(let l, let r, let v):
+            return .split(left: l, right: r.appending(id: id, splitVertical: !v), vertical: v)
+        }
+    }
+
+    // Find the deepest split that the given window would cross in the given
+    // direction. Returns whether the window is alone on its side of the split,
+    // and the window IDs on the other side.
+    struct CrossingResult {
+        let focusedIsAlone: Bool
+        let otherSideIDs: [UInt32]
+    }
+
+    func findCrossingSplit(windowID: UInt32, direction: Direction) -> CrossingResult? {
+        guard case .split(let left, let right, let vertical) = self else { return nil }
+
+        let inLeft = left.contains(id: windowID)
+        guard inLeft || right.contains(id: windowID) else { return nil }
+
+        // Try deeper first
+        let child = inLeft ? left : right
+        if let deeper = child.findCrossingSplit(windowID: windowID, direction: direction) {
+            return deeper
+        }
+
+        let crosses: Bool
+        switch direction {
+        case .right: crosses = vertical && inLeft
+        case .left:  crosses = vertical && !inLeft
+        case .down:  crosses = !vertical && inLeft
+        case .up:    crosses = !vertical && !inLeft
+        }
+        guard crosses else { return nil }
+
+        let mySide = inLeft ? left : right
+        let otherSide = inLeft ? right : left
+        let isAlone: Bool
+        if case .leaf = mySide { isAlone = true } else { isAlone = false }
+
+        return CrossingResult(focusedIsAlone: isAlone, otherSideIDs: otherSide.windowIDs)
+    }
+
+    // Swap the children of the deepest split that the given window crosses
+    // in the given direction.
+    func swappingChildrenForCrossing(windowID: UInt32, direction: Direction) -> BSPTree {
+        guard case .split(let left, let right, let vertical) = self else { return self }
+
+        let inLeft = left.contains(id: windowID)
+        guard inLeft || right.contains(id: windowID) else { return self }
+
+        // Try deeper first
+        if inLeft {
+            let newLeft = left.swappingChildrenForCrossing(windowID: windowID, direction: direction)
+            if newLeft !== left { return .split(left: newLeft, right: right, vertical: vertical) }
+        } else {
+            let newRight = right.swappingChildrenForCrossing(windowID: windowID, direction: direction)
+            if newRight !== right { return .split(left: left, right: newRight, vertical: vertical) }
+        }
+
+        let crosses: Bool
+        switch direction {
+        case .right: crosses = vertical && inLeft
+        case .left:  crosses = vertical && !inLeft
+        case .down:  crosses = !vertical && inLeft
+        case .up:    crosses = !vertical && !inLeft
+        }
+
+        if crosses {
+            return .split(left: right, right: left, vertical: vertical)
+        }
+        return self
+    }
 }
 
-func screenForWindow(_ win: WindowInfo) -> NSScreen? {
-    let center = CGPoint(x: win.frame.midX, y: win.frame.midY)
-    for screen in NSScreen.screens {
-        let full = screen.frame
-        // Convert screen frame to CG coordinates
-        let cgFrame = CGRect(x: full.minX, y: NSScreen.screens[0].frame.height - full.maxY,
-                             width: full.width, height: full.height)
-        if cgFrame.contains(center) { return screen }
+// Reference identity check for BSPTree (used to detect if a deeper swap happened)
+func !== (lhs: BSPTree, rhs: BSPTree) -> Bool {
+    switch (lhs, rhs) {
+    case (.leaf(let a), .leaf(let b)): return a != b
+    case (.split(let ll, let lr, let lv), .split(let rl, let rr, let rv)):
+        return lv != rv || ll !== rl || lr !== rr
+    default: return true
     }
-    return NSScreen.main
 }
 
-var lastTiledWindowIDs: Set<UInt32> = []
+func buildBSPTree(windowIDs: [UInt32], splitVertical: Bool) -> BSPTree? {
+    guard !windowIDs.isEmpty else { return nil }
+    if windowIDs.count == 1 { return .leaf(id: windowIDs[0]) }
+    let mid = (windowIDs.count + 1) / 2
+    return .split(
+        left: buildBSPTree(windowIDs: Array(windowIDs[..<mid]), splitVertical: !splitVertical)!,
+        right: buildBSPTree(windowIDs: Array(windowIDs[mid...]), splitVertical: !splitVertical)!,
+        vertical: splitVertical
+    )
+}
+
+var currentBSPTree: BSPTree?
 var lastTiledFrames: [UInt32: CGRect] = [:]
+
+func applyTiling() {
+    guard let tree = currentBSPTree, let screen = NSScreen.main else { return }
+    let rect = visibleFrame(for: screen)
+    let frames = tree.computeFrames(rect: rect)
+    let windows = getOnScreenWindows()
+    let windowsByID = Dictionary(uniqueKeysWithValues: windows.map { ($0.id, $0) })
+
+    lastTiledFrames.removeAll()
+    for (id, frame) in frames {
+        if let win = windowsByID[id] {
+            setWindowFrame(win, frame: frame)
+        }
+        lastTiledFrames[id] = frame
+    }
+}
 
 func tileWindows() {
     guard tilingEnabled else { return }
     let windows = getOnScreenWindows()
     let currentIDs = Set(windows.map { $0.id })
+    let treeIDs = Set(currentBSPTree?.windowIDs ?? [])
 
-    guard currentIDs != lastTiledWindowIDs else { return }
-    lastTiledWindowIDs = currentIDs
-    lastTiledFrames.removeAll()
-    log("re-tiling \(windows.count) windows")
+    guard currentIDs != treeIDs else { return }
 
-    var byScreen: [NSScreen: [WindowInfo]] = [:]
-    for win in windows {
-        let screen = screenForWindow(win) ?? NSScreen.main!
-        byScreen[screen, default: []].append(win)
+    // Update tree: remove closed windows, add new ones
+    var tree = currentBSPTree
+    for id in treeIDs where !currentIDs.contains(id) {
+        tree = tree?.removing(id: id)
     }
-
-    for (screen, screenWindows) in byScreen {
-        let rect = visibleFrame(for: screen)
-        let frames = bspLayout(windows: screenWindows.count, rect: rect, splitVertical: true)
-        for (win, frame) in zip(screenWindows, frames) {
-            setWindowFrame(win, frame: frame)
-            lastTiledFrames[win.id] = frame
+    let nextSplitVertical: Bool
+    if case .split(_, _, let v) = tree { nextSplitVertical = v } else { nextSplitVertical = true }
+    for win in windows where !treeIDs.contains(win.id) {
+        if let t = tree {
+            tree = t.appending(id: win.id, splitVertical: nextSplitVertical)
+        } else {
+            tree = .leaf(id: win.id)
         }
     }
+
+    currentBSPTree = tree
+    log("re-tiling \(currentIDs.count) windows")
+    applyTiling()
 }
 
 // --- Debug dump ---
@@ -385,26 +524,25 @@ func handleFocusDirection(_ direction: Direction) {
 }
 
 func handleSwapDirection(_ direction: Direction) {
-    guard tilingEnabled else { return }
+    guard tilingEnabled, let tree = currentBSPTree else { return }
     guard let focused = getFocusedWindowInfo() else { return }
-    let windows = getOnScreenWindows()
-    let others = windows.filter { $0.id != focused.id }
-    guard let target = nearestWindow(from: focused.frame, direction: direction, among: others) else { return }
+    guard let result = tree.findCrossingSplit(windowID: focused.id, direction: direction) else { return }
 
-    guard let focusedFrame = lastTiledFrames[focused.id],
-          let targetFrame = lastTiledFrames[target.id] else { return }
+    if result.focusedIsAlone {
+        log("cmd+shift+arrow partition swap for \(focused.id)")
+        currentBSPTree = tree.swappingChildrenForCrossing(windowID: focused.id, direction: direction)
+    } else {
+        let windows = getOnScreenWindows()
+        let otherWindows = windows.filter { result.otherSideIDs.contains($0.id) }
+        guard let target = nearestWindow(from: focused.frame, direction: direction, among: otherWindows) else { return }
+        log("cmd+shift+arrow window swap: \(focused.id) <-> \(target.id)")
+        currentBSPTree = tree.swappingWindows(focused.id, target.id)
+    }
 
-    log("cmd+shift+arrow swap: \(focused.id) <-> \(target.id)")
-
-    let focusedWin = windows.first { $0.id == focused.id }!
-    let targetWin = target
-
-    setWindowFrame(focusedWin, frame: targetFrame)
-    setWindowFrame(targetWin, frame: focusedFrame)
-    lastTiledFrames[focused.id] = targetFrame
-    lastTiledFrames[target.id] = focusedFrame
-
-    warpMouse(to: targetFrame)
+    applyTiling()
+    if let newFrame = lastTiledFrames[focused.id] {
+        warpMouse(to: newFrame)
+    }
 }
 
 // --- Event tap ---
