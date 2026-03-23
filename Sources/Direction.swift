@@ -12,9 +12,9 @@ func directionFromKeyCode(_ keyCode: UInt16) -> Direction? {
     }
 }
 
-func nearestWindow(from source: CGRect, direction: Direction, among windows: [WindowInfo]) -> WindowInfo? {
+func nearestWindow(from source: CGRect, direction: Direction, among windows: [ManagedWindow]) -> ManagedWindow? {
     let center = CGPoint(x: source.midX, y: source.midY)
-    var best: WindowInfo?
+    var best: ManagedWindow?
     var bestDist = CGFloat.infinity
 
     for win in windows {

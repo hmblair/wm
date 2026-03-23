@@ -112,6 +112,7 @@ indirect enum BSPTree {
         }
         return nil
     }
+
 }
 
 func buildBSPTree(windowIDs: [UInt32], splitVertical: Bool) -> BSPTree? {

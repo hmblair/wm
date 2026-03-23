@@ -50,16 +50,18 @@ var pendingMouseUp = false
 
 // --- Focus/navigation handlers ---
 
-func handleFocusDirection(_ direction: Direction, focused: FocusedWindowInfo, windows: [WindowInfo]) {
-    let candidates = windows.filter { $0.id != focused.id }
-    guard let target = nearestWindow(from: focused.frame, direction: direction, among: candidates) else { return }
+func handleFocusDirection(_ direction: Direction, focusedID: UInt32, spaceID: CGSSpaceID) {
+    guard let focused = managedWindows[focusedID] else { return }
+    let candidates = managedWindows.values.filter { $0.id != focusedID && $0.spaceID == spaceID }
+    guard let target = nearestWindow(from: focused.frame, direction: direction, among: Array(candidates)) else { return }
     log("cmd+arrow focus: \(target.id) (\(target.name))")
     focusWindow(target)
     warpMouse(to: target.frame)
 }
 
-func handleSwapDirection(_ direction: Direction, focused: FocusedWindowInfo, windows: [WindowInfo], spaceID: CGSSpaceID) {
+func handleSwapDirection(_ direction: Direction, focusedID: UInt32, spaceID: CGSSpaceID) {
     guard tilingEnabled else { return }
+    guard let focused = managedWindows[focusedID] else { return }
 
     let focusCenter = CGPoint(x: focused.frame.midX, y: focused.frame.midY)
     let did = displayID(for: focusCenter)
@@ -71,16 +73,15 @@ func handleSwapDirection(_ direction: Direction, focused: FocusedWindowInfo, win
         log("cmd+shift+arrow partition swap for \(focused.id)")
         bspTrees[key] = tree.swappingChildrenForCrossing(windowID: focused.id, direction: direction) ?? tree
     } else {
-        let otherWindows = windows.filter { result.otherSideIDs.contains($0.id) }
+        let otherWindows = result.otherSideIDs.compactMap { managedWindows[$0] }
         guard let target = nearestWindow(from: focused.frame, direction: direction, among: otherWindows) else { return }
         log("cmd+shift+arrow window swap: \(focused.id) <-> \(target.id)")
         bspTrees[key] = tree.swappingWindows(focused.id, target.id)
     }
 
-    applyTiling(windows: windows, spaceID: spaceID)
-    if let newFrame = lastTiledFrames[focused.id] {
-        warpMouse(to: newFrame)
-    }
+    applyTiling(spaceID: spaceID)
+    // focused.frame was updated by applyTiling -> setWindowFrame
+    warpMouse(to: focused.frame)
 }
 
 // --- Mouse/focus tracking ---
@@ -89,25 +90,8 @@ var lastFocusedWindow: UInt32 = 0
 var lastSelfFocusTime: UInt64 = 0
 let selfFocusCooldownNs: UInt64 = 150_000_000 // 150ms
 
-func handleMousePosition(_ pos: CGPoint, windows: [WindowInfo]) {
-    // Use lastTiledFrames for hit-testing when tiling is active — these
-    // reflect post-swap positions even within the same tick
-    if tilingEnabled {
-        for (id, frame) in lastTiledFrames {
-            if frame.contains(pos) {
-                if id != lastFocusedWindow {
-                    if let win = windows.first(where: { $0.id == id }) {
-                        log("mouse focus: \(win.id) (\(win.name)) at \(Int(pos.x)),\(Int(pos.y))")
-                        focusWindow(win)
-                    }
-                }
-                return
-            }
-        }
-    }
-
-    // Tiling off or cursor outside all tiles
-    for win in windows {
+func handleMousePosition(_ pos: CGPoint, spaceID: CGSSpaceID) {
+    for win in managedWindows.values where win.spaceID == spaceID {
         if win.frame.contains(pos) {
             if win.id != lastFocusedWindow {
                 log("mouse focus: \(win.id) (\(win.name)) at \(Int(pos.x)),\(Int(pos.y))")
@@ -129,7 +113,9 @@ func checkExternalFocusChange(focused: FocusedWindowInfo) {
 
     log("external focus change: warp to \(focused.id) (\(focused.name))")
     lastFocusedWindow = focused.id
-    warpMouse(to: focused.frame)
+    // Prefer managed frame (post-tiling), fall back to AX-reported frame
+    let frame = managedWindows[focused.id]?.frame ?? focused.frame
+    warpMouse(to: frame)
 }
 
 // --- Debug dump ---
@@ -208,13 +194,15 @@ let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
 CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
 CGEvent.tapEnable(tap: tap, enable: true)
 
-// --- Main loop: snapshot once, process all pending input ---
+// --- Main loop: snapshot once, reconcile, process all pending input ---
 
 let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     CFAbsoluteTimeGetCurrent(), 0.05, 0, 0) { _ in
-    let windows = getOnScreenWindows()
+    let snapshots = getOnScreenWindows()
     let focused = getFocusedWindowInfo()
     let spaceID = activeSpaceID()
+
+    reconcileWindows(snapshots: snapshots)
 
     // Process queued key commands
     let commands = pendingKeyCommands
@@ -222,9 +210,9 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     if let focused = focused {
         for cmd in commands {
             if cmd.swap {
-                handleSwapDirection(cmd.direction, focused: focused, windows: windows, spaceID: spaceID)
+                handleSwapDirection(cmd.direction, focusedID: focused.id, spaceID: spaceID)
             } else {
-                handleFocusDirection(cmd.direction, focused: focused, windows: windows)
+                handleFocusDirection(cmd.direction, focusedID: focused.id, spaceID: spaceID)
             }
         }
     }
@@ -232,12 +220,11 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     // Process mouse-up snap-back
     if pendingMouseUp {
         pendingMouseUp = false
-        snapBackDisplacedWindows(windows: windows)
+        snapBackDisplacedWindows(snapshots: snapshots)
     }
 
-    // Focus-follows-mouse — use lastTiledFrames for hit-testing when
-    // tiling is active, since it reflects post-swap positions
-    handleMousePosition(lastMousePosition, windows: windows)
+    // Focus-follows-mouse
+    handleMousePosition(lastMousePosition, spaceID: spaceID)
 
     // External focus tracking
     if let focused = focused {
@@ -245,7 +232,7 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     }
 
     // Tiling
-    tileWindows(windows: windows, spaceID: spaceID)
+    tileWindows(spaceID: spaceID)
 }
 CFRunLoopAddTimer(CFRunLoopGetCurrent(), pollTimer, .commonModes)
 

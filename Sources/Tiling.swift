@@ -6,47 +6,45 @@ struct DisplaySpaceKey: Hashable {
 }
 
 var bspTrees: [DisplaySpaceKey: BSPTree] = [:]
-var lastTiledFrames: [UInt32: CGRect] = [:]
 var lastActiveSpace: CGSSpaceID = 0
 
-func applyTiling(windows: [WindowInfo], spaceID: CGSSpaceID) {
-    let windowsByID = Dictionary(uniqueKeysWithValues: windows.map { ($0.id, $0) })
+func applyTiling(spaceID: CGSSpaceID) {
+    // Clear tile frames for this space — windows not in a tree get nil
+    for win in managedWindows.values where win.spaceID == spaceID {
+        win.tileFrame = nil
+    }
 
-    var newFrames: [UInt32: CGRect] = [:]
     for (key, tree) in bspTrees where key.spaceID == spaceID {
         guard let screen = screenForDisplayID(key.displayID) else { continue }
         let rect = visibleFrame(for: screen)
         let frames = tree.computeFrames(rect: rect, gap: config.gap)
-        for (id, frame) in frames {
-            if let win = windowsByID[id] {
-                setWindowFrame(win, frame: frame)
+        for (id, tileRect) in frames {
+            if let win = managedWindows[id] {
+                win.tileFrame = tileRect
+                setWindowFrame(win, frame: tileRect)
             }
-            newFrames[id] = frame
         }
     }
-    lastTiledFrames = newFrames
 }
 
-func tileWindows(windows: [WindowInfo], spaceID: CGSSpaceID) {
+func tileWindows(spaceID: CGSSpaceID) {
     guard tilingEnabled else { return }
 
-    // Detect space change — restore tiling for new space without rebuilding
     let spaceChanged = spaceID != lastActiveSpace
     if spaceChanged {
         log("space changed: \(lastActiveSpace) -> \(spaceID)")
         lastActiveSpace = spaceID
     }
 
-    let spaceWindows = windows.filter { $0.spaceID == spaceID }
+    let spaceWindows = managedWindows.values.filter { $0.spaceID == spaceID }
 
-    var windowsByDisplay: [CGDirectDisplayID: [WindowInfo]] = [:]
+    var windowsByDisplay: [CGDirectDisplayID: [ManagedWindow]] = [:]
     for win in spaceWindows {
         let center = CGPoint(x: win.frame.midX, y: win.frame.midY)
         let did = displayID(for: center)
         windowsByDisplay[did, default: []].append(win)
     }
 
-    // Only check trees for the current space
     let currentSpaceKeys = Set(windowsByDisplay.keys.map { DisplaySpaceKey(displayID: $0, spaceID: spaceID) })
     let existingKeysForSpace = Set(bspTrees.keys.filter { $0.spaceID == spaceID })
     let allKeys = currentSpaceKeys.union(existingKeysForSpace)
@@ -78,20 +76,21 @@ func tileWindows(windows: [WindowInfo], spaceID: CGSSpaceID) {
 
     if changed {
         log("re-tiling \(spaceWindows.count) windows on space \(spaceID)")
-        applyTiling(windows: spaceWindows, spaceID: spaceID)
+        applyTiling(spaceID: spaceID)
     }
 }
 
-func snapBackDisplacedWindows(windows: [WindowInfo]) {
+func snapBackDisplacedWindows(snapshots: [WindowInfo]) {
     guard tilingEnabled else { return }
-    for win in windows {
-        guard let expected = lastTiledFrames[win.id] else { continue }
-        if abs(win.frame.origin.x - expected.origin.x) > 2
-            || abs(win.frame.origin.y - expected.origin.y) > 2
-            || abs(win.frame.width - expected.width) > 2
-            || abs(win.frame.height - expected.height) > 2 {
-            log("snapping back \(win.id) (\(win.name))")
-            setWindowFrame(win, frame: expected)
+    for snapshot in snapshots {
+        guard let managed = managedWindows[snapshot.id],
+              let tileRect = managed.tileFrame else { continue }
+        if abs(snapshot.frame.origin.x - managed.frame.origin.x) > 2
+            || abs(snapshot.frame.origin.y - managed.frame.origin.y) > 2
+            || abs(snapshot.frame.width - managed.frame.width) > 2
+            || abs(snapshot.frame.height - managed.frame.height) > 2 {
+            log("snapping back \(managed.id) (\(managed.name))")
+            setWindowFrame(managed, frame: tileRect)
         }
     }
 }
