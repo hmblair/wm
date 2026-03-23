@@ -100,10 +100,24 @@ func handleMousePosition(_ pos: CGPoint, spaceID: CGSSpaceID) {
             return
         }
     }
+
+    // Cursor is over the desktop — unfocus by activating Finder
+    if lastFocusedWindow != 0 {
+        log("mouse over desktop — unfocusing")
+        lastFocusedWindow = 0
+        if let finder = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.finder" }) {
+            finder.activate()
+        }
+    }
 }
 
 func checkExternalFocusChange(focused: FocusedWindowInfo) {
     guard focused.id != lastFocusedWindow else { return }
+    // Don't warp when we intentionally unfocused to the desktop
+    guard lastFocusedWindow != 0 else {
+        lastFocusedWindow = focused.id
+        return
+    }
 
     if elapsedNsSince(lastSelfFocusTime) < selfFocusCooldownNs {
         log("external focus change to \(focused.id), but within cooldown — updating state only")
