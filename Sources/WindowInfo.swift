@@ -9,6 +9,7 @@ struct WindowInfo {
     let pid: Int32
     let name: String
     let frame: CGRect
+    let spaceID: CGSSpaceID
 }
 
 struct FocusedWindowInfo {
@@ -38,7 +39,8 @@ func getOnScreenWindows() -> [WindowInfo] {
             width: boundsDict["Width"] ?? 0, height: boundsDict["Height"] ?? 0
         )
         if frame.width < 50 || frame.height < 50 { continue }
-        windows.append(WindowInfo(id: id, pid: pid, name: name, frame: frame))
+        let space = spaceForWindow(id) ?? 0
+        windows.append(WindowInfo(id: id, pid: pid, name: name, frame: frame, spaceID: space))
     }
     return windows
 }

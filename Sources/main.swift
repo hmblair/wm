@@ -13,6 +13,7 @@ for arg in CommandLine.arguments.dropFirst() {
 
 let verbose = CommandLine.arguments.contains("--verbose") || CommandLine.arguments.contains("-v")
 let tilingEnabled = !CommandLine.arguments.contains("--no-tile")
+let config = loadConfig()
 
 // --- Logging ---
 
@@ -57,25 +58,26 @@ func handleFocusDirection(_ direction: Direction, focused: FocusedWindowInfo, wi
     warpMouse(to: target.frame)
 }
 
-func handleSwapDirection(_ direction: Direction, focused: FocusedWindowInfo, windows: [WindowInfo]) {
+func handleSwapDirection(_ direction: Direction, focused: FocusedWindowInfo, windows: [WindowInfo], spaceID: CGSSpaceID) {
     guard tilingEnabled else { return }
 
     let focusCenter = CGPoint(x: focused.frame.midX, y: focused.frame.midY)
     let did = displayID(for: focusCenter)
-    guard let tree = bspTrees[did] else { return }
+    let key = DisplaySpaceKey(displayID: did, spaceID: spaceID)
+    guard let tree = bspTrees[key] else { return }
     guard let result = tree.findCrossingSplit(windowID: focused.id, direction: direction) else { return }
 
     if result.focusedIsAlone {
         log("cmd+shift+arrow partition swap for \(focused.id)")
-        bspTrees[did] = tree.swappingChildrenForCrossing(windowID: focused.id, direction: direction) ?? tree
+        bspTrees[key] = tree.swappingChildrenForCrossing(windowID: focused.id, direction: direction) ?? tree
     } else {
         let otherWindows = windows.filter { result.otherSideIDs.contains($0.id) }
         guard let target = nearestWindow(from: focused.frame, direction: direction, among: otherWindows) else { return }
         log("cmd+shift+arrow window swap: \(focused.id) <-> \(target.id)")
-        bspTrees[did] = tree.swappingWindows(focused.id, target.id)
+        bspTrees[key] = tree.swappingWindows(focused.id, target.id)
     }
 
-    applyTiling(windows: windows)
+    applyTiling(windows: windows, spaceID: spaceID)
     if let newFrame = lastTiledFrames[focused.id] {
         warpMouse(to: newFrame)
     }
@@ -212,6 +214,7 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     CFAbsoluteTimeGetCurrent(), 0.05, 0, 0) { _ in
     let windows = getOnScreenWindows()
     let focused = getFocusedWindowInfo()
+    let spaceID = activeSpaceID()
 
     // Process queued key commands
     let commands = pendingKeyCommands
@@ -219,7 +222,7 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     if let focused = focused {
         for cmd in commands {
             if cmd.swap {
-                handleSwapDirection(cmd.direction, focused: focused, windows: windows)
+                handleSwapDirection(cmd.direction, focused: focused, windows: windows, spaceID: spaceID)
             } else {
                 handleFocusDirection(cmd.direction, focused: focused, windows: windows)
             }
@@ -242,7 +245,7 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     }
 
     // Tiling
-    tileWindows(windows: windows)
+    tileWindows(windows: windows, spaceID: spaceID)
 }
 CFRunLoopAddTimer(CFRunLoopGetCurrent(), pollTimer, .commonModes)
 

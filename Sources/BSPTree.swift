@@ -1,7 +1,5 @@
 import CoreGraphics
 
-let tileGap: CGFloat = 8
-
 indirect enum BSPTree {
     case leaf(id: UInt32)
     case split(left: BSPTree, right: BSPTree, vertical: Bool)
@@ -20,11 +18,11 @@ indirect enum BSPTree {
         }
     }
 
-    func computeFrames(rect: CGRect) -> [(UInt32, CGRect)] {
+    func computeFrames(rect: CGRect, gap: CGFloat) -> [(UInt32, CGRect)] {
         switch self {
         case .leaf(let id):
-            return [(id, CGRect(x: rect.minX + tileGap, y: rect.minY + tileGap,
-                                width: rect.width - 2 * tileGap, height: rect.height - 2 * tileGap))]
+            return [(id, CGRect(x: rect.minX + gap, y: rect.minY + gap,
+                                width: rect.width - 2 * gap, height: rect.height - 2 * gap))]
         case .split(let left, let right, let vertical):
             let (leftRect, rightRect): (CGRect, CGRect)
             if vertical {
@@ -36,7 +34,7 @@ indirect enum BSPTree {
                 leftRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: halfH)
                 rightRect = CGRect(x: rect.minX, y: rect.minY + halfH, width: rect.width, height: halfH)
             }
-            return left.computeFrames(rect: leftRect) + right.computeFrames(rect: rightRect)
+            return left.computeFrames(rect: leftRect, gap: gap) + right.computeFrames(rect: rightRect, gap: gap)
         }
     }
 
