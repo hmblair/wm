@@ -20,9 +20,11 @@ let tilingEnabled = !CommandLine.arguments.contains("--no-tile")
 
 // --- Logging ---
 
+private let logFormatter = ISO8601DateFormatter()
+
 func log(_ message: @autoclosure () -> String) {
     guard verbose else { return }
-    let ts = ISO8601DateFormatter().string(from: Date())
+    let ts = logFormatter.string(from: Date())
     fputs("\(ts) \(message())\n", stderr)
 }
 
@@ -38,9 +40,7 @@ func elapsedNsSince(_ timestamp: UInt64) -> UInt64 {
     return (mach_absolute_time() - timestamp) * UInt64(machTimebaseInfo.numer) / UInt64(machTimebaseInfo.denom)
 }
 
-// --- Window lookup ---
-
-let ignoredApps: Set<String> = ["borders", "Hammerspoon", "Alfred", "Raycast"]
+// --- Window snapshot ---
 
 struct WindowInfo {
     let id: UInt32
@@ -48,6 +48,14 @@ struct WindowInfo {
     let name: String
     let frame: CGRect
 }
+
+struct FocusedWindowInfo {
+    let id: UInt32
+    let frame: CGRect
+    let name: String
+}
+
+let ignoredApps: Set<String> = ["borders", "Hammerspoon", "Alfred", "Raycast"]
 
 func getOnScreenWindows() -> [WindowInfo] {
     guard let infoList = CGWindowListCopyWindowInfo(
@@ -73,37 +81,7 @@ func getOnScreenWindows() -> [WindowInfo] {
     return windows
 }
 
-func findAXWindow(for win: WindowInfo) -> AXUIElement? {
-    let app = AXUIElementCreateApplication(win.pid)
-    var windowsRef: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsRef) == .success,
-          let axWindows = windowsRef as? [AXUIElement] else { return nil }
-
-    for axWindow in axWindows {
-        var windowID: CGWindowID = 0
-        _ = _AXUIElementGetWindow(axWindow, &windowID)
-        if windowID == win.id { return axWindow }
-    }
-    return nil
-}
-
-// --- AX window operations ---
-
-func focusWindow(_ win: WindowInfo) {
-    if let runningApp = NSRunningApplication(processIdentifier: win.pid) {
-        runningApp.activate()
-    }
-
-    guard let axWindow = findAXWindow(for: win) else {
-        log("AX window not found for CG window \(win.id) (\(win.name))")
-        return
-    }
-
-    AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
-    AXUIElementSetAttributeValue(axWindow, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-}
-
-func getFocusedWindowInfo() -> (id: UInt32, frame: CGRect, name: String)? {
+func getFocusedWindowInfo() -> FocusedWindowInfo? {
     guard let frontApp = NSWorkspace.shared.frontmostApplication else { return nil }
     let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
 
@@ -128,7 +106,37 @@ func getFocusedWindowInfo() -> (id: UInt32, frame: CGRect, name: String)? {
     AXValueGetValue(pRef as! AXValue, .cgPoint, &pos)
     AXValueGetValue(sRef as! AXValue, .cgSize, &size)
 
-    return (id: windowID, frame: CGRect(origin: pos, size: size), name: frontApp.localizedName ?? "unknown")
+    return FocusedWindowInfo(id: windowID, frame: CGRect(origin: pos, size: size), name: frontApp.localizedName ?? "unknown")
+}
+
+// --- AX window operations ---
+
+func findAXWindow(for win: WindowInfo) -> AXUIElement? {
+    let app = AXUIElementCreateApplication(win.pid)
+    var windowsRef: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+          let axWindows = windowsRef as? [AXUIElement] else { return nil }
+
+    for axWindow in axWindows {
+        var windowID: CGWindowID = 0
+        _ = _AXUIElementGetWindow(axWindow, &windowID)
+        if windowID == win.id { return axWindow }
+    }
+    return nil
+}
+
+func focusWindow(_ win: WindowInfo) {
+    if let runningApp = NSRunningApplication(processIdentifier: win.pid) {
+        runningApp.activate()
+    }
+
+    guard let axWindow = findAXWindow(for: win) else {
+        log("AX window not found for CG window \(win.id) (\(win.name))")
+        return
+    }
+
+    AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
+    AXUIElementSetAttributeValue(axWindow, kAXFocusedAttribute as CFString, kCFBooleanTrue)
 }
 
 func setWindowFrame(_ win: WindowInfo, frame: CGRect) {
@@ -162,14 +170,8 @@ func displayID(for point: CGPoint) -> CGDirectDisplayID {
     return count > 0 ? displayID : CGMainDisplayID()
 }
 
-func screenForWindow(_ win: WindowInfo) -> NSScreen {
-    let center = CGPoint(x: win.frame.midX, y: win.frame.midY)
-    for screen in NSScreen.screens {
-        if screen.frame.contains(center) {
-            return screen
-        }
-    }
-    return NSScreen.main ?? NSScreen.screens[0]
+func displayIDForScreen(_ screen: NSScreen) -> CGDirectDisplayID {
+    return screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? CGMainDisplayID()
 }
 
 func visibleFrame(for screen: NSScreen) -> CGRect {
@@ -177,6 +179,10 @@ func visibleFrame(for screen: NSScreen) -> CGRect {
     let visible = screen.visibleFrame
     let y = full.height - visible.maxY
     return CGRect(x: visible.minX, y: y, width: visible.width, height: visible.height)
+}
+
+func screenForDisplayID(_ did: CGDirectDisplayID) -> NSScreen? {
+    return NSScreen.screens.first(where: { displayIDForScreen($0) == did })
 }
 
 // --- BSP tiling ---
@@ -313,15 +319,12 @@ func buildBSPTree(windowIDs: [UInt32], splitVertical: Bool) -> BSPTree? {
 var bspTrees: [CGDirectDisplayID: BSPTree] = [:]
 var lastTiledFrames: [UInt32: CGRect] = [:]
 
-func applyTiling() {
-    let windows = getOnScreenWindows()
+func applyTiling(windows: [WindowInfo]) {
     let windowsByID = Dictionary(uniqueKeysWithValues: windows.map { ($0.id, $0) })
 
     lastTiledFrames.removeAll()
-    for (displayID, tree) in bspTrees {
-        guard let screen = NSScreen.screens.first(where: {
-            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID) == displayID
-        }) else { continue }
+    for (did, tree) in bspTrees {
+        guard let screen = screenForDisplayID(did) else { continue }
         let rect = visibleFrame(for: screen)
         let frames = tree.computeFrames(rect: rect)
         for (id, frame) in frames {
@@ -333,19 +336,17 @@ func applyTiling() {
     }
 }
 
-func tileWindows() {
+func tileWindows(windows: [WindowInfo]) {
     guard tilingEnabled else { return }
-    let windows = getOnScreenWindows()
 
-    // Group windows by screen
+    // Group windows by display using Quartz coordinates
     var windowsByDisplay: [CGDirectDisplayID: [WindowInfo]] = [:]
     for win in windows {
-        let screen = screenForWindow(win)
-        let did = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? CGMainDisplayID()
+        let center = CGPoint(x: win.frame.midX, y: win.frame.midY)
+        let did = displayID(for: center)
         windowsByDisplay[did, default: []].append(win)
     }
 
-    // Collect all display IDs (current + previously tracked)
     let allDisplayIDs = Set(windowsByDisplay.keys).union(bspTrees.keys)
     var changed = false
 
@@ -362,7 +363,6 @@ func tileWindows() {
             continue
         }
 
-        // Preserve ordering: existing tree order first, then new windows
         var orderedIDs: [UInt32] = []
         if let existingTree = bspTrees[did] {
             orderedIDs = existingTree.windowIDs.filter { currentIDs.contains($0) }
@@ -376,13 +376,13 @@ func tileWindows() {
 
     if changed {
         log("re-tiling \(windows.count) windows across \(windowsByDisplay.count) screens")
-        applyTiling()
+        applyTiling(windows: windows)
     }
 }
 
-func snapBackDisplacedWindows() {
+func snapBackDisplacedWindows(windows: [WindowInfo]) {
     guard tilingEnabled else { return }
-    for win in getOnScreenWindows() {
+    for win in windows {
         guard let expected = lastTiledFrames[win.id] else { continue }
         if abs(win.frame.origin.x - expected.origin.x) > 2
             || abs(win.frame.origin.y - expected.origin.y) > 2
@@ -436,10 +436,9 @@ func nearestWindow(from source: CGRect, direction: Direction, among windows: [Wi
     return best
 }
 
-func handleFocusDirection(_ direction: Direction) {
-    guard let focused = getFocusedWindowInfo() else { return }
-    let windows = getOnScreenWindows().filter { $0.id != focused.id }
-    guard let target = nearestWindow(from: focused.frame, direction: direction, among: windows) else { return }
+func handleFocusDirection(_ direction: Direction, focused: FocusedWindowInfo, windows: [WindowInfo]) {
+    let candidates = windows.filter { $0.id != focused.id }
+    guard let target = nearestWindow(from: focused.frame, direction: direction, among: candidates) else { return }
     log("cmd+arrow focus: \(target.id) (\(target.name))")
     lastFocusedWindow = target.id
     lastSelfFocusTime = mach_absolute_time()
@@ -447,11 +446,9 @@ func handleFocusDirection(_ direction: Direction) {
     warpMouse(to: target.frame)
 }
 
-func handleSwapDirection(_ direction: Direction) {
+func handleSwapDirection(_ direction: Direction, focused: FocusedWindowInfo, windows: [WindowInfo]) {
     guard tilingEnabled else { return }
-    guard let focused = getFocusedWindowInfo() else { return }
 
-    // Find the tree for the focused window's screen
     let focusCenter = CGPoint(x: focused.frame.midX, y: focused.frame.midY)
     let did = displayID(for: focusCenter)
     guard let tree = bspTrees[did] else { return }
@@ -461,14 +458,13 @@ func handleSwapDirection(_ direction: Direction) {
         log("cmd+shift+arrow partition swap for \(focused.id)")
         bspTrees[did] = tree.swappingChildrenForCrossing(windowID: focused.id, direction: direction) ?? tree
     } else {
-        let windows = getOnScreenWindows()
         let otherWindows = windows.filter { result.otherSideIDs.contains($0.id) }
         guard let target = nearestWindow(from: focused.frame, direction: direction, among: otherWindows) else { return }
         log("cmd+shift+arrow window swap: \(focused.id) <-> \(target.id)")
         bspTrees[did] = tree.swappingWindows(focused.id, target.id)
     }
 
-    applyTiling()
+    applyTiling(windows: windows)
     if let newFrame = lastTiledFrames[focused.id] {
         warpMouse(to: newFrame)
     }
@@ -480,9 +476,8 @@ var lastFocusedWindow: UInt32 = 0
 var lastSelfFocusTime: UInt64 = 0
 let selfFocusCooldownNs: UInt64 = 150_000_000 // 150ms
 
-func handleMouseMoved(_ event: CGEvent) {
+func handleMouseMoved(_ event: CGEvent, windows: [WindowInfo]) {
     let pos = event.location
-    let windows = getOnScreenWindows()
 
     for win in windows {
         if win.frame.contains(pos) {
@@ -497,8 +492,7 @@ func handleMouseMoved(_ event: CGEvent) {
     }
 }
 
-func checkExternalFocusChange() {
-    guard let focused = getFocusedWindowInfo() else { return }
+func checkExternalFocusChange(focused: FocusedWindowInfo) {
     guard focused.id != lastFocusedWindow else { return }
 
     if elapsedNsSince(lastSelfFocusTime) < selfFocusCooldownNs {
@@ -548,6 +542,9 @@ func handleEvent(
         return Unmanaged.passUnretained(event)
     }
 
+    // Snapshot once per event
+    let windows = getOnScreenWindows()
+
     if type == .keyDown {
         let flags = event.flags
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
@@ -556,21 +553,21 @@ func handleEvent(
             let hasShift = flags.contains(.maskShift)
             let noOtherMods = !flags.contains(.maskControl) && !flags.contains(.maskAlternate)
 
-            if hasCmd && !hasShift && noOtherMods {
-                handleFocusDirection(direction)
-                return nil
-            }
-            if hasCmd && hasShift && noOtherMods {
-                handleSwapDirection(direction)
+            if hasCmd && noOtherMods, let focused = getFocusedWindowInfo() {
+                if !hasShift {
+                    handleFocusDirection(direction, focused: focused, windows: windows)
+                } else {
+                    handleSwapDirection(direction, focused: focused, windows: windows)
+                }
                 return nil
             }
         }
     }
 
     if type == .leftMouseUp {
-        snapBackDisplacedWindows()
+        snapBackDisplacedWindows(windows: windows)
     } else if type == .mouseMoved {
-        handleMouseMoved(event)
+        handleMouseMoved(event, windows: windows)
     }
     return Unmanaged.passUnretained(event)
 }
@@ -595,8 +592,11 @@ CGEvent.tapEnable(tap: tap, enable: true)
 
 let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     CFAbsoluteTimeGetCurrent(), 0.05, 0, 0) { _ in
-    checkExternalFocusChange()
-    tileWindows()
+    let windows = getOnScreenWindows()
+    if let focused = getFocusedWindowInfo() {
+        checkExternalFocusChange(focused: focused)
+    }
+    tileWindows(windows: windows)
 }
 CFRunLoopAddTimer(CFRunLoopGetCurrent(), pollTimer, .commonModes)
 
