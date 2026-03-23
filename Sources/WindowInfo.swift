@@ -10,6 +10,7 @@ struct WindowInfo {
     let name: String
     let frame: CGRect
     let spaceID: CGSSpaceID
+    let axWindow: AXUIElement
 }
 
 struct FocusedWindowInfo {
@@ -39,8 +40,9 @@ func getOnScreenWindows() -> [WindowInfo] {
             width: boundsDict["Width"] ?? 0, height: boundsDict["Height"] ?? 0
         )
         if frame.width < 50 || frame.height < 50 { continue }
+        guard let axWindow = findAXWindowByPidAndID(pid: pid, windowID: id) else { continue }
         let space = spaceForWindow(id) ?? 0
-        windows.append(WindowInfo(id: id, pid: pid, name: name, frame: frame, spaceID: space))
+        windows.append(WindowInfo(id: id, pid: pid, name: name, frame: frame, spaceID: space, axWindow: axWindow))
     }
     return windows
 }
@@ -73,16 +75,16 @@ func getFocusedWindowInfo() -> FocusedWindowInfo? {
     return FocusedWindowInfo(id: windowID, frame: CGRect(origin: pos, size: size), name: frontApp.localizedName ?? "unknown")
 }
 
-func findAXWindow(for win: WindowInfo) -> AXUIElement? {
-    let app = AXUIElementCreateApplication(win.pid)
+func findAXWindowByPidAndID(pid: Int32, windowID: UInt32) -> AXUIElement? {
+    let app = AXUIElementCreateApplication(pid)
     var windowsRef: CFTypeRef?
     guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsRef) == .success,
           let axWindows = windowsRef as? [AXUIElement] else { return nil }
 
     for axWindow in axWindows {
-        var windowID: CGWindowID = 0
-        _ = _AXUIElementGetWindow(axWindow, &windowID)
-        if windowID == win.id { return axWindow }
+        var wid: CGWindowID = 0
+        _ = _AXUIElementGetWindow(axWindow, &wid)
+        if wid == windowID { return axWindow }
     }
     return nil
 }

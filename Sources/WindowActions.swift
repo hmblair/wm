@@ -6,30 +6,20 @@ func focusWindow(_ win: WindowInfo) {
         runningApp.activate()
     }
 
-    guard let axWindow = findAXWindow(for: win) else {
-        log("AX window not found for CG window \(win.id) (\(win.name))")
-        return
-    }
-
-    AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
-    AXUIElementSetAttributeValue(axWindow, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    AXUIElementPerformAction(win.axWindow, kAXRaiseAction as CFString)
+    AXUIElementSetAttributeValue(win.axWindow, kAXFocusedAttribute as CFString, kCFBooleanTrue)
     lastFocusedWindow = win.id
     lastSelfFocusTime = mach_absolute_time()
 }
 
 func setWindowFrame(_ win: WindowInfo, frame: CGRect) {
-    guard let axWindow = findAXWindow(for: win) else {
-        log("setWindowFrame: AX window not found for \(win.id) (\(win.name))")
-        return
-    }
-
     var position = frame.origin
     var size = CGSize(width: frame.width, height: frame.height)
     if let posValue = AXValueCreate(.cgPoint, &position) {
-        AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, posValue)
+        AXUIElementSetAttributeValue(win.axWindow, kAXPositionAttribute as CFString, posValue)
     }
     if let sizeValue = AXValueCreate(.cgSize, &size) {
-        AXUIElementSetAttributeValue(axWindow, kAXSizeAttribute as CFString, sizeValue)
+        AXUIElementSetAttributeValue(win.axWindow, kAXSizeAttribute as CFString, sizeValue)
     }
 }
 
