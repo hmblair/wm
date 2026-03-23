@@ -26,6 +26,18 @@ func log(_ message: @autoclosure () -> String) {
     fputs("\(ts) \(message())\n", stderr)
 }
 
+// --- Time utilities ---
+
+private let machTimebaseInfo: mach_timebase_info_data_t = {
+    var info = mach_timebase_info_data_t()
+    mach_timebase_info(&info)
+    return info
+}()
+
+func elapsedNsSince(_ timestamp: UInt64) -> UInt64 {
+    return (mach_absolute_time() - timestamp) * UInt64(machTimebaseInfo.numer) / UInt64(machTimebaseInfo.denom)
+}
+
 // --- Window lookup ---
 
 let ignoredApps: Set<String> = ["borders", "Hammerspoon", "Alfred", "Raycast"]
@@ -61,81 +73,6 @@ func getOnScreenWindows() -> [WindowInfo] {
     return windows
 }
 
-// --- Focus via Accessibility API ---
-
-func focusWindow(_ win: WindowInfo) {
-    let app = AXUIElementCreateApplication(win.pid)
-
-    if let runningApp = NSRunningApplication(processIdentifier: win.pid) {
-        runningApp.activate()
-    }
-
-    var windowsRef: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsRef) == .success,
-          let axWindows = windowsRef as? [AXUIElement] else {
-        log("failed to get AX windows for pid \(win.pid) (\(win.name))")
-        return
-    }
-
-    for axWindow in axWindows {
-        var windowID: CGWindowID = 0
-        _ = _AXUIElementGetWindow(axWindow, &windowID)
-        if windowID == win.id {
-            AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
-            AXUIElementSetAttributeValue(axWindow, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-            return
-        }
-    }
-    log("AX window not found for CG window \(win.id) (\(win.name))")
-}
-
-// --- Focused window via Accessibility API ---
-
-func getFocusedWindowInfo() -> (id: UInt32, frame: CGRect, name: String)? {
-    guard let frontApp = NSWorkspace.shared.frontmostApplication else { return nil }
-    let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
-
-    var focusedRef: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedRef) == .success
-    else { return nil }
-
-    let axWindow = focusedRef as! AXUIElement
-
-    var windowID: CGWindowID = 0
-    _ = _AXUIElementGetWindow(axWindow, &windowID)
-
-    var posRef: CFTypeRef?
-    var sizeRef: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(axWindow, kAXPositionAttribute as CFString, &posRef) == .success,
-          AXUIElementCopyAttributeValue(axWindow, kAXSizeAttribute as CFString, &sizeRef) == .success
-    else { return nil }
-
-    var pos = CGPoint.zero
-    var size = CGSize.zero
-    AXValueGetValue(posRef as! AXValue, .cgPoint, &pos)
-    AXValueGetValue(sizeRef as! AXValue, .cgSize, &size)
-
-    return (id: windowID, frame: CGRect(origin: pos, size: size), name: frontApp.localizedName ?? "unknown")
-}
-
-// --- Mouse warp ---
-
-func warpMouse(to frame: CGRect) {
-    let center = CGPoint(x: frame.midX, y: frame.midY)
-    log("warp mouse to \(Int(center.x)),\(Int(center.y))")
-    CGWarpMouseCursorPosition(center)
-}
-
-// --- Elapsed time helper ---
-
-func elapsedNsSince(_ timestamp: UInt64) -> UInt64 {
-    var info = mach_timebase_info_data_t()
-    mach_timebase_info(&info)
-    return (mach_absolute_time() - timestamp) * UInt64(info.numer) / UInt64(info.denom)
-}
-
-// --- Window frame manipulation ---
-
 func findAXWindow(for win: WindowInfo) -> AXUIElement? {
     let app = AXUIElementCreateApplication(win.pid)
     var windowsRef: CFTypeRef?
@@ -148,6 +85,50 @@ func findAXWindow(for win: WindowInfo) -> AXUIElement? {
         if windowID == win.id { return axWindow }
     }
     return nil
+}
+
+// --- AX window operations ---
+
+func focusWindow(_ win: WindowInfo) {
+    if let runningApp = NSRunningApplication(processIdentifier: win.pid) {
+        runningApp.activate()
+    }
+
+    guard let axWindow = findAXWindow(for: win) else {
+        log("AX window not found for CG window \(win.id) (\(win.name))")
+        return
+    }
+
+    AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
+    AXUIElementSetAttributeValue(axWindow, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+}
+
+func getFocusedWindowInfo() -> (id: UInt32, frame: CGRect, name: String)? {
+    guard let frontApp = NSWorkspace.shared.frontmostApplication else { return nil }
+    let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
+
+    var focusedRef: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedRef) == .success,
+          let ref = focusedRef
+    else { return nil }
+    let axWindow = ref as! AXUIElement
+
+    var windowID: CGWindowID = 0
+    _ = _AXUIElementGetWindow(axWindow, &windowID)
+
+    var posRef: CFTypeRef?
+    var sizeRef: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(axWindow, kAXPositionAttribute as CFString, &posRef) == .success,
+          AXUIElementCopyAttributeValue(axWindow, kAXSizeAttribute as CFString, &sizeRef) == .success,
+          let pRef = posRef, let sRef = sizeRef
+    else { return nil }
+
+    var pos = CGPoint.zero
+    var size = CGSize.zero
+    AXValueGetValue(pRef as! AXValue, .cgPoint, &pos)
+    AXValueGetValue(sRef as! AXValue, .cgSize, &size)
+
+    return (id: windowID, frame: CGRect(origin: pos, size: size), name: frontApp.localizedName ?? "unknown")
 }
 
 func setWindowFrame(_ win: WindowInfo, frame: CGRect) {
@@ -166,9 +147,30 @@ func setWindowFrame(_ win: WindowInfo, frame: CGRect) {
     }
 }
 
-// --- BSP tiling ---
+func warpMouse(to frame: CGRect) {
+    let center = CGPoint(x: frame.midX, y: frame.midY)
+    log("warp mouse to \(Int(center.x)),\(Int(center.y))")
+    CGWarpMouseCursorPosition(center)
+}
 
-let tileGap: CGFloat = 8
+// --- Screen utilities ---
+
+func displayID(for point: CGPoint) -> CGDirectDisplayID {
+    var displayID: CGDirectDisplayID = 0
+    var count: UInt32 = 0
+    CGGetDisplaysWithPoint(point, 1, &displayID, &count)
+    return count > 0 ? displayID : CGMainDisplayID()
+}
+
+func screenForWindow(_ win: WindowInfo) -> NSScreen {
+    let center = CGPoint(x: win.frame.midX, y: win.frame.midY)
+    for screen in NSScreen.screens {
+        if screen.frame.contains(center) {
+            return screen
+        }
+    }
+    return NSScreen.main ?? NSScreen.screens[0]
+}
 
 func visibleFrame(for screen: NSScreen) -> CGRect {
     let full = screen.frame
@@ -176,6 +178,10 @@ func visibleFrame(for screen: NSScreen) -> CGRect {
     let y = full.height - visible.maxY
     return CGRect(x: visible.minX, y: y, width: visible.width, height: visible.height)
 }
+
+// --- BSP tiling ---
+
+let tileGap: CGFloat = 8
 
 indirect enum BSPTree {
     case leaf(id: UInt32)
@@ -227,34 +233,6 @@ indirect enum BSPTree {
         }
     }
 
-    // Remove a window from the tree. If a split node ends up with only one
-    // child, collapse it to that child.
-    func removing(id: UInt32) -> BSPTree? {
-        switch self {
-        case .leaf(let wid): return wid == id ? nil : self
-        case .split(let l, let r, let v):
-            let newL = l.removing(id: id)
-            let newR = r.removing(id: id)
-            if let nl = newL, let nr = newR {
-                return .split(left: nl, right: nr, vertical: v)
-            }
-            return newL ?? newR
-        }
-    }
-
-    // Insert a window as a new leaf, splitting the last leaf.
-    func appending(id: UInt32, splitVertical: Bool) -> BSPTree {
-        switch self {
-        case .leaf(let existing):
-            return .split(left: .leaf(id: existing), right: .leaf(id: id), vertical: splitVertical)
-        case .split(let l, let r, let v):
-            return .split(left: l, right: r.appending(id: id, splitVertical: !v), vertical: v)
-        }
-    }
-
-    // Find the deepest split that the given window would cross in the given
-    // direction. Returns whether the window is alone on its side of the split,
-    // and the window IDs on the other side.
     struct CrossingResult {
         let focusedIsAlone: Bool
         let otherSideIDs: [UInt32]
@@ -266,7 +244,6 @@ indirect enum BSPTree {
         let inLeft = left.contains(id: windowID)
         guard inLeft || right.contains(id: windowID) else { return nil }
 
-        // Try deeper first
         let child = inLeft ? left : right
         if let deeper = child.findCrossingSplit(windowID: windowID, direction: direction) {
             return deeper
@@ -289,21 +266,20 @@ indirect enum BSPTree {
         return CrossingResult(focusedIsAlone: isAlone, otherSideIDs: otherSide.windowIDs)
     }
 
-    // Swap the children of the deepest split that the given window crosses
-    // in the given direction.
-    func swappingChildrenForCrossing(windowID: UInt32, direction: Direction) -> BSPTree {
-        guard case .split(let left, let right, let vertical) = self else { return self }
+    func swappingChildrenForCrossing(windowID: UInt32, direction: Direction) -> BSPTree? {
+        guard case .split(let left, let right, let vertical) = self else { return nil }
 
         let inLeft = left.contains(id: windowID)
-        guard inLeft || right.contains(id: windowID) else { return self }
+        guard inLeft || right.contains(id: windowID) else { return nil }
 
-        // Try deeper first
         if inLeft {
-            let newLeft = left.swappingChildrenForCrossing(windowID: windowID, direction: direction)
-            if newLeft !== left { return .split(left: newLeft, right: right, vertical: vertical) }
+            if let newLeft = left.swappingChildrenForCrossing(windowID: windowID, direction: direction) {
+                return .split(left: newLeft, right: right, vertical: vertical)
+            }
         } else {
-            let newRight = right.swappingChildrenForCrossing(windowID: windowID, direction: direction)
-            if newRight !== right { return .split(left: left, right: newRight, vertical: vertical) }
+            if let newRight = right.swappingChildrenForCrossing(windowID: windowID, direction: direction) {
+                return .split(left: left, right: newRight, vertical: vertical)
+            }
         }
 
         let crosses: Bool
@@ -317,17 +293,7 @@ indirect enum BSPTree {
         if crosses {
             return .split(left: right, right: left, vertical: vertical)
         }
-        return self
-    }
-}
-
-// Reference identity check for BSPTree (used to detect if a deeper swap happened)
-func !== (lhs: BSPTree, rhs: BSPTree) -> Bool {
-    switch (lhs, rhs) {
-    case (.leaf(let a), .leaf(let b)): return a != b
-    case (.split(let ll, let lr, let lv), .split(let rl, let rr, let rv)):
-        return lv != rv || ll !== rl || lr !== rr
-    default: return true
+        return nil
     }
 }
 
@@ -342,119 +308,77 @@ func buildBSPTree(windowIDs: [UInt32], splitVertical: Bool) -> BSPTree? {
     )
 }
 
-var currentBSPTree: BSPTree?
+// --- Tiling state and logic ---
+
+var bspTrees: [CGDirectDisplayID: BSPTree] = [:]
 var lastTiledFrames: [UInt32: CGRect] = [:]
 
 func applyTiling() {
-    guard let tree = currentBSPTree, let screen = NSScreen.main else { return }
-    let rect = visibleFrame(for: screen)
-    let frames = tree.computeFrames(rect: rect)
     let windows = getOnScreenWindows()
     let windowsByID = Dictionary(uniqueKeysWithValues: windows.map { ($0.id, $0) })
 
     lastTiledFrames.removeAll()
-    for (id, frame) in frames {
-        if let win = windowsByID[id] {
-            setWindowFrame(win, frame: frame)
+    for (displayID, tree) in bspTrees {
+        guard let screen = NSScreen.screens.first(where: {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID) == displayID
+        }) else { continue }
+        let rect = visibleFrame(for: screen)
+        let frames = tree.computeFrames(rect: rect)
+        for (id, frame) in frames {
+            if let win = windowsByID[id] {
+                setWindowFrame(win, frame: frame)
+            }
+            lastTiledFrames[id] = frame
         }
-        lastTiledFrames[id] = frame
     }
 }
 
 func tileWindows() {
     guard tilingEnabled else { return }
     let windows = getOnScreenWindows()
-    let currentIDs = Set(windows.map { $0.id })
-    let treeIDs = Set(currentBSPTree?.windowIDs ?? [])
 
-    guard currentIDs != treeIDs else { return }
-
-    // Update tree: remove closed windows, add new ones
-    var tree = currentBSPTree
-    for id in treeIDs where !currentIDs.contains(id) {
-        tree = tree?.removing(id: id)
-    }
-    let nextSplitVertical: Bool
-    if case .split(_, _, let v) = tree { nextSplitVertical = v } else { nextSplitVertical = true }
-    for win in windows where !treeIDs.contains(win.id) {
-        if let t = tree {
-            tree = t.appending(id: win.id, splitVertical: nextSplitVertical)
-        } else {
-            tree = .leaf(id: win.id)
-        }
-    }
-
-    currentBSPTree = tree
-    log("re-tiling \(currentIDs.count) windows")
-    applyTiling()
-}
-
-// --- Debug dump ---
-
-if CommandLine.arguments.contains("--dump") {
-    fputs("Dumping in 3 seconds — switch to the window you want to inspect.\n", stderr)
-    Thread.sleep(forTimeInterval: 3)
-    guard let frontApp = NSWorkspace.shared.frontmostApplication else {
-        fputs("no frontmost app\n", stderr); exit(1)
-    }
-    print("Frontmost app: \(frontApp.localizedName ?? "?") (pid \(frontApp.processIdentifier))")
-
-    if let focused = getFocusedWindowInfo() {
-        print("Focused window: [\(focused.id)] \(focused.name) — pos=\(Int(focused.frame.origin.x)),\(Int(focused.frame.origin.y)) size=\(Int(focused.frame.width))x\(Int(focused.frame.height))")
-    } else {
-        print("Could not get focused window info")
-    }
-
-    print("\nCG on-screen windows:")
-    for win in getOnScreenWindows() {
-        print("  [\(win.id)] \(win.name) — pos=\(Int(win.frame.origin.x)),\(Int(win.frame.origin.y)) size=\(Int(win.frame.width))x\(Int(win.frame.height))")
-    }
-    exit(0)
-}
-
-// --- State ---
-
-var lastFocusedWindow: UInt32 = 0
-var lastSelfFocusTime: UInt64 = 0
-let selfFocusCooldownNs: UInt64 = 150_000_000 // 150ms
-
-// --- Mouse movement handler ---
-
-func handleMouseMoved(_ event: CGEvent) {
-    let pos = event.location
-    let windows = getOnScreenWindows()
-
+    // Group windows by screen
+    var windowsByDisplay: [CGDirectDisplayID: [WindowInfo]] = [:]
     for win in windows {
-        if win.frame.contains(pos) {
-            if win.id != lastFocusedWindow {
-                log("mouse focus: \(win.id) (\(win.name)) at \(Int(pos.x)),\(Int(pos.y))")
-                lastFocusedWindow = win.id
-                lastSelfFocusTime = mach_absolute_time()
-                focusWindow(win)
-            }
-            break
+        let screen = screenForWindow(win)
+        let did = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? CGMainDisplayID()
+        windowsByDisplay[did, default: []].append(win)
+    }
+
+    // Collect all display IDs (current + previously tracked)
+    let allDisplayIDs = Set(windowsByDisplay.keys).union(bspTrees.keys)
+    var changed = false
+
+    for did in allDisplayIDs {
+        let screenWindows = windowsByDisplay[did] ?? []
+        let currentIDs = Set(screenWindows.map { $0.id })
+        let treeIDs = Set(bspTrees[did]?.windowIDs ?? [])
+
+        guard currentIDs != treeIDs else { continue }
+        changed = true
+
+        if screenWindows.isEmpty {
+            bspTrees.removeValue(forKey: did)
+            continue
         }
-    }
-}
 
-// --- Poll for external focus changes ---
+        // Preserve ordering: existing tree order first, then new windows
+        var orderedIDs: [UInt32] = []
+        if let existingTree = bspTrees[did] {
+            orderedIDs = existingTree.windowIDs.filter { currentIDs.contains($0) }
+        }
+        for win in screenWindows where !orderedIDs.contains(win.id) {
+            orderedIDs.append(win.id)
+        }
 
-func checkExternalFocusChange() {
-    guard let focused = getFocusedWindowInfo() else { return }
-    guard focused.id != lastFocusedWindow else { return }
-
-    if elapsedNsSince(lastSelfFocusTime) < selfFocusCooldownNs {
-        log("external focus change to \(focused.id), but within cooldown — updating state only")
-        lastFocusedWindow = focused.id
-        return
+        bspTrees[did] = buildBSPTree(windowIDs: orderedIDs, splitVertical: true)
     }
 
-    log("external focus change: warp to \(focused.id) (\(focused.name))")
-    lastFocusedWindow = focused.id
-    warpMouse(to: focused.frame)
+    if changed {
+        log("re-tiling \(windows.count) windows across \(windowsByDisplay.count) screens")
+        applyTiling()
+    }
 }
-
-// --- Snap back displaced windows ---
 
 func snapBackDisplacedWindows() {
     guard tilingEnabled else { return }
@@ -470,7 +394,7 @@ func snapBackDisplacedWindows() {
     }
 }
 
-// --- Keyboard-driven focus and swap ---
+// --- Direction + keyboard navigation ---
 
 enum Direction { case left, right, up, down }
 
@@ -524,19 +448,24 @@ func handleFocusDirection(_ direction: Direction) {
 }
 
 func handleSwapDirection(_ direction: Direction) {
-    guard tilingEnabled, let tree = currentBSPTree else { return }
+    guard tilingEnabled else { return }
     guard let focused = getFocusedWindowInfo() else { return }
+
+    // Find the tree for the focused window's screen
+    let focusCenter = CGPoint(x: focused.frame.midX, y: focused.frame.midY)
+    let did = displayID(for: focusCenter)
+    guard let tree = bspTrees[did] else { return }
     guard let result = tree.findCrossingSplit(windowID: focused.id, direction: direction) else { return }
 
     if result.focusedIsAlone {
         log("cmd+shift+arrow partition swap for \(focused.id)")
-        currentBSPTree = tree.swappingChildrenForCrossing(windowID: focused.id, direction: direction)
+        bspTrees[did] = tree.swappingChildrenForCrossing(windowID: focused.id, direction: direction) ?? tree
     } else {
         let windows = getOnScreenWindows()
         let otherWindows = windows.filter { result.otherSideIDs.contains($0.id) }
         guard let target = nearestWindow(from: focused.frame, direction: direction, among: otherWindows) else { return }
         log("cmd+shift+arrow window swap: \(focused.id) <-> \(target.id)")
-        currentBSPTree = tree.swappingWindows(focused.id, target.id)
+        bspTrees[did] = tree.swappingWindows(focused.id, target.id)
     }
 
     applyTiling()
@@ -545,7 +474,68 @@ func handleSwapDirection(_ direction: Direction) {
     }
 }
 
-// --- Event tap ---
+// --- Mouse/focus tracking ---
+
+var lastFocusedWindow: UInt32 = 0
+var lastSelfFocusTime: UInt64 = 0
+let selfFocusCooldownNs: UInt64 = 150_000_000 // 150ms
+
+func handleMouseMoved(_ event: CGEvent) {
+    let pos = event.location
+    let windows = getOnScreenWindows()
+
+    for win in windows {
+        if win.frame.contains(pos) {
+            if win.id != lastFocusedWindow {
+                log("mouse focus: \(win.id) (\(win.name)) at \(Int(pos.x)),\(Int(pos.y))")
+                lastFocusedWindow = win.id
+                lastSelfFocusTime = mach_absolute_time()
+                focusWindow(win)
+            }
+            break
+        }
+    }
+}
+
+func checkExternalFocusChange() {
+    guard let focused = getFocusedWindowInfo() else { return }
+    guard focused.id != lastFocusedWindow else { return }
+
+    if elapsedNsSince(lastSelfFocusTime) < selfFocusCooldownNs {
+        log("external focus change to \(focused.id), but within cooldown — updating state only")
+        lastFocusedWindow = focused.id
+        return
+    }
+
+    log("external focus change: warp to \(focused.id) (\(focused.name))")
+    lastFocusedWindow = focused.id
+    warpMouse(to: focused.frame)
+}
+
+// --- Debug dump ---
+
+if CommandLine.arguments.contains("--dump") {
+    fputs("Dumping in 3 seconds — switch to the window you want to inspect.\n", stderr)
+    Thread.sleep(forTimeInterval: 3)
+    guard let frontApp = NSWorkspace.shared.frontmostApplication else {
+        fputs("no frontmost app\n", stderr); exit(1)
+    }
+    print("Frontmost app: \(frontApp.localizedName ?? "?") (pid \(frontApp.processIdentifier))")
+
+    if let focused = getFocusedWindowInfo() {
+        print("Focused window: [\(focused.id)] \(focused.name) — pos=\(Int(focused.frame.origin.x)),\(Int(focused.frame.origin.y)) size=\(Int(focused.frame.width))x\(Int(focused.frame.height))")
+    } else {
+        print("Could not get focused window info")
+    }
+
+    print("\nCG on-screen windows:")
+    for win in getOnScreenWindows() {
+        print("  [\(win.id)] \(win.name) — pos=\(Int(win.frame.origin.x)),\(Int(win.frame.origin.y)) size=\(Int(win.frame.width))x\(Int(win.frame.height))")
+    }
+    exit(0)
+}
+
+// --- Event tap + run loop ---
 
 var globalTap: CFMachPort?
 
