@@ -15,7 +15,7 @@ A lightweight Swift daemon that focuses whichever window the mouse cursor moves 
 make install
 ```
 
-This builds a release binary and copies it to `~/.local/bin/`. Override the install prefix with `PREFIX=/usr/local make install`.
+This builds a release binary and installs it as an app bundle at `~/.local/focus-follows-mouse.app`. Override the install prefix with `PREFIX=/usr/local make install`.
 
 ## Usage
 
@@ -51,8 +51,6 @@ Logs are available via macOS unified logging:
 ```
 log stream --predicate 'subsystem == "com.hmblair.focus-follows-mouse"' --level debug
 ```
-
-Startup errors are also written to `/tmp/focus-follows-mouse.log`.
 
 ### Running manually
 

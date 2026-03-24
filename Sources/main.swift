@@ -38,6 +38,11 @@ func warn(_ message: @autoclosure () -> String) {
     logger.warning("\(msg, privacy: .public)")
 }
 
+func info(_ message: @autoclosure () -> String) {
+    let msg = message()
+    logger.info("\(msg, privacy: .public)")
+}
+
 // --- Time utilities ---
 
 private let machTimebaseInfo: mach_timebase_info_data_t = {
@@ -210,7 +215,7 @@ let mainRunLoop = CFRunLoopGetCurrent()!
 
 func installSignalHandlers() {
     let handler: @convention(c) (Int32) -> Void = { sig in
-        logger.info("received signal \(sig, privacy: .public), shutting down")
+        info("received signal \(sig), shutting down")
         CFRunLoopStop(mainRunLoop)
     }
     signal(SIGINT, handler)
@@ -227,7 +232,7 @@ func handleEvent(
     proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?
 ) -> Unmanaged<CGEvent>? {
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-        logger.warning("event tap re-enabled after system disable")
+        warn("event tap re-enabled after system disable")
         if let tap = globalTap { CGEvent.tapEnable(tap: tap, enable: true) }
         return Unmanaged.passUnretained(event)
     }
@@ -264,15 +269,15 @@ func createEventTap(eventMask: CGEventMask, maxRetries: Int = 10, baseDelay: UIn
             callback: handleEvent, userInfo: nil
         ) {
             if attempt > 0 {
-                logger.info("event tap created after \(attempt + 1, privacy: .public) attempts")
+                info("event tap created after \(attempt + 1) attempts")
             }
             return tap
         }
         let delay = baseDelay * UInt32(1 << min(attempt, 4))
-        logger.warning("event tap failed (attempt \(attempt + 1, privacy: .public)/\(maxRetries, privacy: .public)), retrying...")
+        warn("event tap failed (attempt \(attempt + 1)/\(maxRetries)), retrying...")
         usleep(delay)
     }
-    logger.error("failed to create event tap after \(maxRetries, privacy: .public) attempts — grant accessibility permissions")
+    warn("failed to create event tap after \(maxRetries) attempts — grant accessibility permissions")
     exit(1)
 }
 
@@ -322,6 +327,6 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
 }
 CFRunLoopAddTimer(CFRunLoopGetCurrent(), pollTimer, .commonModes)
 
-logger.info("running\(verbose ? " (verbose)" : "", privacy: .public)")
+info("running\(verbose ? " (verbose)" : "")")
 CFRunLoopRun()
-logger.info("stopped")
+info("stopped")

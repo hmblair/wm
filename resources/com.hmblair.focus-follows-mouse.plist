@@ -15,9 +15,7 @@
         <key>SuccessfulExit</key>
         <false/>
     </dict>
-    <key>StandardErrorPath</key>
-    <string>/tmp/focus-follows-mouse.log</string>
-    <key>ProcessType</key>
+<key>ProcessType</key>
     <string>Interactive</string>
 </dict>
 </plist>
