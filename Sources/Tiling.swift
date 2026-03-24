@@ -1,7 +1,7 @@
 import Cocoa
 import ApplicationServices
 
-private let frameTolerance: CGFloat = 2
+let frameTolerance: CGFloat = 2
 
 struct DisplaySpaceKey: Hashable {
     let displayID: CGDirectDisplayID
@@ -110,7 +110,7 @@ func enforceTileFrames(_ tileFrames: [UInt32: CGRect]) {
     for (id, tileFrame) in tileFrames {
         guard let win = managedWindows[id] else { continue }
         if !framesMatch(win.frame, tileFrame) {
-            log("enforce: [\(id)] (\(win.name)) frame \(Int(win.frame.origin.x)),\(Int(win.frame.origin.y)) \(Int(win.frame.width))x\(Int(win.frame.height)) → \(Int(tileFrame.origin.x)),\(Int(tileFrame.origin.y)) \(Int(tileFrame.width))x\(Int(tileFrame.height))")
+            log("enforce: [\(id)] (\(win.name)) \(formatFrame(win.frame)) → \(formatFrame(tileFrame))")
             setWindowFrame(win, frame: tileFrame)
         }
     }

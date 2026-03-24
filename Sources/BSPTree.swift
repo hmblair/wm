@@ -4,6 +4,15 @@ indirect enum BSPTree {
     case leaf(id: UInt32)
     case split(left: BSPTree, right: BSPTree, vertical: Bool, ratio: CGFloat = 0.5)
 
+    private static func crossesSplit(direction: Direction, vertical: Bool, inLeft: Bool) -> Bool {
+        switch direction {
+        case .right: return vertical && inLeft
+        case .left:  return vertical && !inLeft
+        case .down:  return !vertical && inLeft
+        case .up:    return !vertical && !inLeft
+        }
+    }
+
     var windowIDs: [UInt32] {
         switch self {
         case .leaf(let id): return [id]
@@ -66,14 +75,7 @@ indirect enum BSPTree {
             return deeper
         }
 
-        let crosses: Bool
-        switch direction {
-        case .right: crosses = vertical && inLeft
-        case .left:  crosses = vertical && !inLeft
-        case .down:  crosses = !vertical && inLeft
-        case .up:    crosses = !vertical && !inLeft
-        }
-        guard crosses else { return nil }
+        guard Self.crossesSplit(direction: direction, vertical: vertical, inLeft: inLeft) else { return nil }
 
         let mySide = inLeft ? left : right
         let otherSide = inLeft ? right : left
@@ -99,15 +101,7 @@ indirect enum BSPTree {
             }
         }
 
-        let crosses: Bool
-        switch direction {
-        case .right: crosses = vertical && inLeft
-        case .left:  crosses = vertical && !inLeft
-        case .down:  crosses = !vertical && inLeft
-        case .up:    crosses = !vertical && !inLeft
-        }
-
-        if crosses {
+        if Self.crossesSplit(direction: direction, vertical: vertical, inLeft: inLeft) {
             return .split(left: right, right: left, vertical: vertical, ratio: 1 - ratio)
         }
         return nil

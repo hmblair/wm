@@ -6,7 +6,7 @@ import CoreGraphics
 let knownArgs: Set<String> = ["--verbose", "-v", "--dump", "--no-tile"]
 for arg in CommandLine.arguments.dropFirst() {
     if !knownArgs.contains(arg) {
-        fputs("unknown argument: \(arg)\nusage: focus-follows-mouse [--verbose|-v] [--dump]\n", stderr)
+        fputs("unknown argument: \(arg)\nusage: focus-follows-mouse [--verbose|-v] [--dump] [--no-tile]\n", stderr)
         exit(1)
     }
 }
@@ -161,7 +161,7 @@ if CommandLine.arguments.contains("--dump") {
     print("Active space: \(spaceID)")
 
     if let focused = getFocusedWindow() {
-        print("Focused window: [\(focused.id)] \(focused.name) — pos=\(Int(focused.frame.origin.x)),\(Int(focused.frame.origin.y)) size=\(Int(focused.frame.width))x\(Int(focused.frame.height))")
+        print("Focused window: [\(focused.id)] \(focused.name) — \(formatFrame(focused.frame))")
     } else {
         print("Could not get focused window info")
     }
@@ -169,49 +169,29 @@ if CommandLine.arguments.contains("--dump") {
     let snapshot = getOnScreenWindows()
     reconcileWindows(snapshot: snapshot, activeSpaceID: spaceID)
     let tileFrames = tilingEnabled ? tileWindows(spaceID: spaceID, popupSizeByPid: snapshot.popupSizeByPid) : [:]
-
     let manageableIDs = Set(snapshot.manageable.map { $0.window.id })
-    let manageableSpaces = Dictionary(uniqueKeysWithValues: snapshot.manageable.map { ($0.window.id, $0.spaceID) })
 
     print("\nAll on-screen windows (z-order):")
     for win in snapshot.windows {
         let rawSpace = spaceForWindow(win.id)
         let spaceStr = rawSpace.map { String($0) } ?? "nil"
         let layer = snapshot.layers[win.id] ?? 0
+        let subroleStr = snapshot.subroles[win.id].map { " subrole=\($0)" } ?? ""
 
-        var subroleStr = ""
-        if let ax = findAXWindowByPidAndID(pid: win.pid, windowID: win.id) {
-            var subroleRef: CFTypeRef?
-            AXUIElementCopyAttributeValue(ax, kAXSubroleAttribute as CFString, &subroleRef)
-            subroleStr = " subrole=\(subroleRef as? String ?? "nil")"
-        }
-
-        var status: String
-        if manageableIDs.contains(win.id) {
-            let managed = managedWindows[win.id] != nil
+        let status: String
+        if let reason = snapshot.excludeReasons[win.id] {
+            status = "excluded: \(reason)"
+        } else if manageableIDs.contains(win.id) {
             if let tile = tileFrames[win.id] {
-                status = "managed, tile=\(Int(tile.origin.x)),\(Int(tile.origin.y)) \(Int(tile.width))x\(Int(tile.height))"
-            } else if managed {
-                let winSpace = manageableSpaces[win.id] ?? 0
-                if winSpace != spaceID && winSpace != 0 {
-                    status = "managed, not tiled (space \(winSpace) != active \(spaceID))"
-                } else {
-                    status = "managed, not tiled"
-                }
+                status = "managed, tile=\(formatFrame(tile))"
             } else {
-                status = "manageable, not yet managed"
+                status = "managed, not tiled"
             }
         } else {
-            if ignoredApps.contains(win.name) {
-                status = "excluded: ignored app"
-            } else if findAXWindowByPidAndID(pid: win.pid, windowID: win.id) == nil {
-                status = "excluded: no AX handle"
-            } else {
-                status = "excluded: non-standard subrole"
-            }
+            status = "not manageable"
         }
 
-        print("  [\(win.id)] \(win.name) — pos=\(Int(win.frame.origin.x)),\(Int(win.frame.origin.y)) size=\(Int(win.frame.width))x\(Int(win.frame.height)) layer=\(layer) space=\(spaceStr)\(subroleStr) [\(status)]")
+        print("  [\(win.id)] \(win.name) — \(formatFrame(win.frame)) layer=\(layer) space=\(spaceStr)\(subroleStr) [\(status)]")
     }
     exit(0)
 }

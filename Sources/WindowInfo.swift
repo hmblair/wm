@@ -11,6 +11,10 @@ struct Window {
     let frame: CGRect
 }
 
+func formatFrame(_ f: CGRect) -> String {
+    return "\(Int(f.origin.x)),\(Int(f.origin.y)) \(Int(f.width))x\(Int(f.height))"
+}
+
 let ignoredApps: Set<String> = ["borders", "Hammerspoon", "Alfred", "Raycast"]
 
 struct ManagedWindowInfo {
@@ -24,12 +28,16 @@ struct OnScreenSnapshot {
     let manageable: [ManagedWindowInfo]
     let popupSizeByPid: [Int32: CGSize]
     let layers: [UInt32: Int]
+    let subroles: [UInt32: String]
+    let excludeReasons: [UInt32: String]
 }
 
 func getOnScreenWindows() -> OnScreenSnapshot {
     guard let infoList = CGWindowListCopyWindowInfo(
         [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
-    ) as? [[String: Any]] else { return OnScreenSnapshot(windows: [], manageable: [], popupSizeByPid: [:], layers: [:]) }
+    ) as? [[String: Any]] else {
+        return OnScreenSnapshot(windows: [], manageable: [], popupSizeByPid: [:], layers: [:], subroles: [:], excludeReasons: [:])
+    }
 
     let allowedLayers: Set<Int> = [0, 1000]
     var allWindows: [Window] = []
@@ -37,6 +45,8 @@ func getOnScreenWindows() -> OnScreenSnapshot {
     var managedIDs: Set<UInt32> = []
     var allWindowsByPid: [Int32: [(id: UInt32, frame: CGRect)]] = [:]
     var layers: [UInt32: Int] = [:]
+    var subroles: [UInt32: String] = [:]
+    var excludeReasons: [UInt32: String] = [:]
 
     for info in infoList {
         guard let id = info[kCGWindowNumber as String] as? UInt32,
@@ -55,13 +65,24 @@ func getOnScreenWindows() -> OnScreenSnapshot {
         allWindowsByPid[pid, default: []].append((id: id, frame: frame))
         layers[id] = layer
 
-        guard let axWindow = findAXWindowByPidAndID(pid: pid, windowID: id) else { continue }
+        guard let axWindow = findAXWindowByPidAndID(pid: pid, windowID: id) else {
+            excludeReasons[id] = "no AX handle"
+            continue
+        }
         var subroleRef: CFTypeRef?
         AXUIElementCopyAttributeValue(axWindow, kAXSubroleAttribute as CFString, &subroleRef)
-        guard (subroleRef as? String) == kAXStandardWindowSubrole as String else { continue }
+        let subrole = subroleRef as? String ?? "nil"
+        subroles[id] = subrole
+        guard subrole == kAXStandardWindowSubrole as String else {
+            excludeReasons[id] = "subrole: \(subrole)"
+            continue
+        }
         var fullScreenRef: CFTypeRef?
         if AXUIElementCopyAttributeValue(axWindow, "AXFullScreen" as CFString, &fullScreenRef) == .success,
-           let isFullScreen = fullScreenRef as? Bool, isFullScreen { continue }
+           let isFullScreen = fullScreenRef as? Bool, isFullScreen {
+            excludeReasons[id] = "full screen"
+            continue
+        }
         let space = spaceForWindow(id) ?? 0
         manageable.append(ManagedWindowInfo(window: win, spaceID: space, axWindow: axWindow))
         managedIDs.insert(id)
@@ -82,7 +103,8 @@ func getOnScreenWindows() -> OnScreenSnapshot {
         }
     }
 
-    return OnScreenSnapshot(windows: allWindows, manageable: manageable, popupSizeByPid: popupSizeByPid, layers: layers)
+    return OnScreenSnapshot(windows: allWindows, manageable: manageable, popupSizeByPid: popupSizeByPid,
+                            layers: layers, subroles: subroles, excludeReasons: excludeReasons)
 }
 
 func getFocusedWindow() -> Window? {
