@@ -15,7 +15,8 @@ func formatFrame(_ f: CGRect) -> String {
     return "\(Int(f.origin.x)),\(Int(f.origin.y)) \(Int(f.width))x\(Int(f.height))"
 }
 
-let ignoredApps: Set<String> = ["borders", "Hammerspoon", "Alfred", "Raycast"]
+var ignoredApps: Set<String> = []
+var excludedApps: Set<String> = []
 
 struct ManagedWindowInfo {
     let window: Window
@@ -62,6 +63,10 @@ func getOnScreenWindows() -> OnScreenSnapshot {
         layers[id] = layer
 
         guard manageableLayers.contains(layer) else { continue }
+        if excludedApps.contains(name) {
+            excludeReasons[id] = "excluded app"
+            continue
+        }
         guard let axWindow = findAXWindowByPidAndID(pid: pid, windowID: id) else {
             excludeReasons[id] = "no AX handle"
             continue

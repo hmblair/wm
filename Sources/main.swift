@@ -14,6 +14,8 @@ for arg in CommandLine.arguments.dropFirst() {
 let verbose = CommandLine.arguments.contains("--verbose") || CommandLine.arguments.contains("-v")
 let tilingEnabled = !CommandLine.arguments.contains("--no-tile")
 let config = loadConfig()
+ignoredApps = Set(config.ignoredApps)
+excludedApps = Set(config.excludedApps)
 
 // --- Logging ---
 
@@ -211,16 +213,15 @@ func handleEvent(
 
     if type == .mouseMoved {
         lastMousePosition = event.location
-    } else if type == .keyDown {
+    } else if type == .keyDown && config.keybindings.enabled {
         let flags = event.flags
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
         if let direction = directionFromKeyCode(keyCode) {
-            let hasCmd = flags.contains(.maskCommand)
-            let hasShift = flags.contains(.maskShift)
-            let noOtherMods = !flags.contains(.maskControl) && !flags.contains(.maskAlternate)
-
-            if hasCmd && noOtherMods {
-                pendingKeyCommands.append(PendingKeyCommand(direction: direction, swap: hasShift))
+            if config.keybindings.swapModifier.matches(flags) {
+                pendingKeyCommands.append(PendingKeyCommand(direction: direction, swap: true))
+                return nil
+            } else if config.keybindings.focusModifier.matches(flags) {
+                pendingKeyCommands.append(PendingKeyCommand(direction: direction, swap: false))
                 return nil
             }
         }
@@ -229,8 +230,10 @@ func handleEvent(
     return Unmanaged.passUnretained(event)
 }
 
-let eventMask = CGEventMask(1 << CGEventType.mouseMoved.rawValue)
-              | CGEventMask(1 << CGEventType.keyDown.rawValue)
+var eventMask = CGEventMask(1 << CGEventType.mouseMoved.rawValue)
+if config.keybindings.enabled {
+    eventMask |= CGEventMask(1 << CGEventType.keyDown.rawValue)
+}
 
 guard let tap = CGEvent.tapCreate(
     tap: .cghidEventTap, place: .headInsertEventTap, options: .defaultTap,
