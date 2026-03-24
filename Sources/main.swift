@@ -197,6 +197,21 @@ if CommandLine.arguments.contains("--dump") {
     exit(0)
 }
 
+// --- Signal handling ---
+
+let mainRunLoop = CFRunLoopGetCurrent()!
+
+func installSignalHandlers() {
+    let handler: @convention(c) (Int32) -> Void = { sig in
+        fputs("\nfocus-follows-mouse: received signal \(sig), shutting down\n", stderr)
+        CFRunLoopStop(mainRunLoop)
+    }
+    signal(SIGINT, handler)
+    signal(SIGTERM, handler)
+}
+
+installSignalHandlers()
+
 // --- Event tap (captures input only, no data polling) ---
 
 var globalTap: CFMachPort?
@@ -234,15 +249,27 @@ if config.keybindings.enabled {
     eventMask |= CGEventMask(1 << CGEventType.keyDown.rawValue)
 }
 
-guard let tap = CGEvent.tapCreate(
-    tap: .cghidEventTap, place: .headInsertEventTap, options: .defaultTap,
-    eventsOfInterest: eventMask,
-    callback: handleEvent, userInfo: nil
-) else {
-    fputs("focus-follows-mouse: failed to create event tap. Grant accessibility permissions.\n", stderr)
+func createEventTap(eventMask: CGEventMask, maxRetries: Int = 10, baseDelay: UInt32 = 500_000) -> CFMachPort {
+    for attempt in 0..<maxRetries {
+        if let tap = CGEvent.tapCreate(
+            tap: .cghidEventTap, place: .headInsertEventTap, options: .defaultTap,
+            eventsOfInterest: eventMask,
+            callback: handleEvent, userInfo: nil
+        ) {
+            if attempt > 0 {
+                fputs("focus-follows-mouse: event tap created after \(attempt + 1) attempts\n", stderr)
+            }
+            return tap
+        }
+        let delay = baseDelay * UInt32(1 << min(attempt, 4))
+        fputs("focus-follows-mouse: event tap failed (attempt \(attempt + 1)/\(maxRetries)), retrying in \(delay / 1_000_000)s...\n", stderr)
+        usleep(delay)
+    }
+    fputs("focus-follows-mouse: failed to create event tap after \(maxRetries) attempts. Grant accessibility permissions.\n", stderr)
     exit(1)
 }
 
+let tap = createEventTap(eventMask: eventMask)
 globalTap = tap
 let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
 CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)

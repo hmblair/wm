@@ -20,17 +20,40 @@ This builds a release binary and copies it to `/opt/homebrew/bin/`. Override the
 ## Usage
 
 ```
+focus-follows-mouse [--verbose|-v] [--dump] [--no-tile]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--verbose`, `-v` | Print timestamped debug output to stderr |
+| `--dump` | Dump window info for the current space and exit |
+| `--no-tile` | Disable the built-in tiling window manager |
+
+### Running as a launchd service (recommended)
+
+`make install` copies the binary and installs a launchd plist that starts the daemon at login and restarts it on crash:
+
+```
+make install
+make load
+```
+
+To stop and remove:
+
+```
+make unload    # stop the service
+make uninstall # remove binary and plist
+```
+
+Logs are written to `/tmp/focus-follows-mouse.log`.
+
+### Running manually
+
+```
 focus-follows-mouse
 ```
 
-The process runs in the foreground. To launch it with [AeroSpace](https://github.com/nikitabobko/AeroSpace), add to `aerospace.toml`:
-
-```toml
-after-startup-command = [
-    'exec-and-forget focus-follows-mouse',
-]
-```
-
+The process runs in the foreground and exits cleanly on SIGINT/SIGTERM.
 ## How it works
 
 - **Mouse tracking**: A `CGEvent` tap listens for mouse movement events.
