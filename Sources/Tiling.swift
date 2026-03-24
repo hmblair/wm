@@ -13,6 +13,8 @@ private var suppressResizeUntilTick: Int = 0
 private var currentTick: Int = 0
 
 func applyTiling(spaceID: CGSSpaceID, fast: Bool = false, skipID: UInt32? = nil) {
+    suppressResizeUntilTick = currentTick + 3
+
     // Clear tile frames for this space — windows not in a tree get nil
     for win in managedWindows.values where win.spaceID == spaceID {
         win.tileFrame = nil
@@ -88,9 +90,6 @@ func tileWindows(spaceID: CGSSpaceID) {
     if changed {
         log("re-tiling \(spaceWindows.count) windows on space \(spaceID)")
         applyTiling(spaceID: spaceID)
-        // Suppress resize detection for a few ticks so stale CG snapshots
-        // don't get misinterpreted as user resizes
-        suppressResizeUntilTick = currentTick + 3
     }
 }
 
