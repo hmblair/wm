@@ -162,28 +162,27 @@ if CommandLine.arguments.contains("--dump") {
     print("Frontmost app: \(frontApp.localizedName ?? "?") (pid \(frontApp.processIdentifier))")
     print("Active space: \(spaceID)")
 
-    if let focused = getFocusedWindow() {
+    if let focused = getFocusedWindow(cgWindows: fetchCGWindowList()) {
         print("Focused window: [\(focused.id)] \(focused.name) — \(formatFrame(focused.frame))")
     } else {
         print("Could not get focused window info")
     }
 
-    let snapshot = getOnScreenWindows()
-    reconcileWindows(snapshot: snapshot, activeSpaceID: spaceID)
+    let dump = dumpWindowInfo()
+    reconcileWindows(cgWindows: fetchCGWindowList(), activeSpaceID: spaceID)
     let tileFrames = tilingEnabled ? tileWindows(spaceID: spaceID) : [:]
-    let manageableIDs = Set(snapshot.manageable.map { $0.window.id })
 
     print("\nAll on-screen windows (z-order):")
-    for win in snapshot.windows {
+    for win in dump.windows {
         let rawSpace = spaceForWindow(win.id)
         let spaceStr = rawSpace.map { String($0) } ?? "nil"
-        let layer = snapshot.layers[win.id] ?? 0
-        let subroleStr = snapshot.subroles[win.id].map { " subrole=\($0)" } ?? ""
+        let layer = dump.layers[win.id] ?? 0
+        let subroleStr = dump.subroles[win.id].map { " subrole=\($0)" } ?? ""
 
         let status: String
-        if let reason = snapshot.excludeReasons[win.id] {
+        if let reason = dump.excludeReasons[win.id] {
             status = "excluded: \(reason)"
-        } else if manageableIDs.contains(win.id) {
+        } else if dump.manageableIDs.contains(win.id) {
             if let tile = tileFrames[win.id] {
                 status = "managed, tile=\(formatFrame(tile))"
             } else {
@@ -253,40 +252,37 @@ CGEvent.tapEnable(tap: tap, enable: true)
 
 let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     CFAbsoluteTimeGetCurrent(), config.pollInterval, 0, 0) { _ in
-    // 1. Observe
-    let snapshot = getOnScreenWindows()
-    let focused = getFocusedWindow()
-    let spaceID = activeSpaceID()
+    let tick = TickState()
 
-    // 2. Reconcile managed windows with reality
-    reconcileWindows(snapshot: snapshot, activeSpaceID: spaceID)
+    // 1. Reconcile managed windows with reality (AX lookups only for new windows)
+    reconcileWindows(cgWindows: tick.cgWindows, activeSpaceID: tick.spaceID)
 
-    // 3. Compute tile layout (rebuilds BSP if window set changed)
-    var tileFrames = tileWindows(spaceID: spaceID)
+    // 2. Compute tile layout (rebuilds BSP if window set changed)
+    var tileFrames = tileWindows(spaceID: tick.spaceID)
 
-    // 4. Process queued key commands
+    // 3. Process queued key commands (accesses tick.focusedWindow only if commands pending)
     let commands = pendingKeyCommands
     pendingKeyCommands.removeAll()
-    if let focused = focused {
+    if !commands.isEmpty, let focused = tick.focusedWindow {
         for cmd in commands {
             if cmd.swap {
-                if let newFrames = handleSwapDirection(cmd.direction, focused: focused, spaceID: spaceID) {
+                if let newFrames = handleSwapDirection(cmd.direction, focused: focused, spaceID: tick.spaceID) {
                     tileFrames = newFrames
                 }
             } else {
-                handleFocusDirection(cmd.direction, focused: focused, spaceID: spaceID)
+                handleFocusDirection(cmd.direction, focused: focused, spaceID: tick.spaceID)
             }
         }
     }
 
-    // 5. Enforce tile positions
+    // 4. Enforce tile positions
     enforceTileFrames(tileFrames)
 
-    // 6. Focus-follows-mouse
-    handleMousePosition(lastMousePosition, windows: snapshot.windows, spaceID: spaceID)
+    // 5. Focus-follows-mouse
+    handleMousePosition(lastMousePosition, windows: tick.windows, spaceID: tick.spaceID)
 
-    // 7. External focus tracking
-    if let focused = focused {
+    // 6. External focus tracking
+    if let focused = tick.focusedWindow {
         checkExternalFocusChange(focused: focused)
     }
 }

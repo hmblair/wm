@@ -17,83 +17,59 @@ func formatFrame(_ f: CGRect) -> String {
 
 var ignoredApps: Set<String> = []
 var excludedApps: Set<String> = []
+let manageableLayers: Set<Int> = [0, 1000]
 
-struct ManagedWindowInfo {
-    let window: Window
-    let spaceID: CGSSpaceID
-    let axWindow: AXUIElement
+struct CGWindowEntry {
+    let id: UInt32
+    let pid: Int32
+    let name: String
+    let frame: CGRect
+    let layer: Int
 }
 
-struct OnScreenSnapshot {
-    let windows: [Window]
-    let manageable: [ManagedWindowInfo]
-    let layers: [UInt32: Int]
-    let subroles: [UInt32: String]
-    let excludeReasons: [UInt32: String]
-}
-
-func getOnScreenWindows() -> OnScreenSnapshot {
+func fetchCGWindowList() -> [CGWindowEntry] {
     guard let infoList = CGWindowListCopyWindowInfo(
         [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
     ) as? [[String: Any]] else {
-        return OnScreenSnapshot(windows: [], manageable: [], layers: [:], subroles: [:], excludeReasons: [:])
+        return []
     }
 
-    let manageableLayers: Set<Int> = [0, 1000]
-    var allWindows: [Window] = []
-    var manageable: [ManagedWindowInfo] = []
-    var layers: [UInt32: Int] = [:]
-    var subroles: [UInt32: String] = [:]
-    var excludeReasons: [UInt32: String] = [:]
-
+    var entries: [CGWindowEntry] = []
     for info in infoList {
         guard let id = info[kCGWindowNumber as String] as? UInt32,
               let pid = info[kCGWindowOwnerPID as String] as? Int32,
               let boundsDict = info[kCGWindowBounds as String] as? [String: CGFloat],
               let layer = info[kCGWindowLayer as String] as? Int,
-              let name = info[kCGWindowOwnerName as String] as? String,
-              !ignoredApps.contains(name)
+              let name = info[kCGWindowOwnerName as String] as? String
         else { continue }
         let frame = CGRect(
             x: boundsDict["X"] ?? 0, y: boundsDict["Y"] ?? 0,
             width: boundsDict["Width"] ?? 0, height: boundsDict["Height"] ?? 0
         )
-        let win = Window(id: id, pid: pid, name: name, frame: frame)
-        allWindows.append(win)
-        layers[id] = layer
-
-        guard manageableLayers.contains(layer) else { continue }
-        if excludedApps.contains(name) {
-            excludeReasons[id] = "excluded app"
-            continue
-        }
-        guard let axWindow = findAXWindowByPidAndID(pid: pid, windowID: id) else {
-            excludeReasons[id] = "no AX handle"
-            continue
-        }
-        var subroleRef: CFTypeRef?
-        AXUIElementCopyAttributeValue(axWindow, kAXSubroleAttribute as CFString, &subroleRef)
-        let subrole = subroleRef as? String ?? "nil"
-        subroles[id] = subrole
-        guard subrole == kAXStandardWindowSubrole as String else {
-            excludeReasons[id] = "subrole: \(subrole)"
-            continue
-        }
-        var fullScreenRef: CFTypeRef?
-        if AXUIElementCopyAttributeValue(axWindow, "AXFullScreen" as CFString, &fullScreenRef) == .success,
-           let isFullScreen = fullScreenRef as? Bool, isFullScreen {
-            excludeReasons[id] = "full screen"
-            continue
-        }
-        let space = spaceForWindow(id) ?? 0
-        manageable.append(ManagedWindowInfo(window: win, spaceID: space, axWindow: axWindow))
+        entries.append(CGWindowEntry(id: id, pid: pid, name: name, frame: frame, layer: layer))
     }
-
-    return OnScreenSnapshot(windows: allWindows, manageable: manageable,
-                            layers: layers, subroles: subroles, excludeReasons: excludeReasons)
+    return entries
 }
 
-func getFocusedWindow() -> Window? {
+class TickState {
+    lazy var spaceID: CGSSpaceID = activeSpaceID()
+
+    lazy var cgWindows: [CGWindowEntry] = fetchCGWindowList()
+
+    lazy var windows: [Window] = self.cgWindows
+        .filter { !ignoredApps.contains($0.name) }
+        .map { Window(id: $0.id, pid: $0.pid, name: $0.name, frame: $0.frame) }
+
+    private var _focusedWindow: Window?? = nil
+    var focusedWindow: Window? {
+        if let cached = _focusedWindow { return cached }
+        let value = getFocusedWindow(cgWindows: self.cgWindows)
+        _focusedWindow = .some(value)
+        return value
+    }
+}
+
+func getFocusedWindow(cgWindows: [CGWindowEntry]) -> Window? {
     guard let frontApp = NSWorkspace.shared.frontmostApplication else { return nil }
     let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
 
@@ -106,19 +82,11 @@ func getFocusedWindow() -> Window? {
     var windowID: CGWindowID = 0
     _ = _AXUIElementGetWindow(axWindow, &windowID)
 
-    var posRef: CFTypeRef?
-    var sizeRef: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(axWindow, kAXPositionAttribute as CFString, &posRef) == .success,
-          AXUIElementCopyAttributeValue(axWindow, kAXSizeAttribute as CFString, &sizeRef) == .success,
-          let pRef = posRef, let sRef = sizeRef
-    else { return nil }
+    let frame = cgWindows.first(where: { $0.id == windowID })
+        .map { CGRect(x: $0.frame.origin.x, y: $0.frame.origin.y, width: $0.frame.width, height: $0.frame.height) }
+        ?? .zero
 
-    var pos = CGPoint.zero
-    var size = CGSize.zero
-    AXValueGetValue(pRef as! AXValue, .cgPoint, &pos)
-    AXValueGetValue(sRef as! AXValue, .cgSize, &size)
-
-    return Window(id: windowID, pid: frontApp.processIdentifier, name: frontApp.localizedName ?? "unknown", frame: CGRect(origin: pos, size: size))
+    return Window(id: windowID, pid: frontApp.processIdentifier, name: frontApp.localizedName ?? "unknown", frame: frame)
 }
 
 func findAXWindowByPidAndID(pid: Int32, windowID: UInt32) -> AXUIElement? {
@@ -133,4 +101,57 @@ func findAXWindowByPidAndID(pid: Int32, windowID: UInt32) -> AXUIElement? {
         if wid == windowID { return axWindow }
     }
     return nil
+}
+
+// Eager snapshot used only by --dump
+struct DumpSnapshot {
+    let windows: [Window]
+    let layers: [UInt32: Int]
+    let subroles: [UInt32: String]
+    let excludeReasons: [UInt32: String]
+    let manageableIDs: Set<UInt32>
+}
+
+func dumpWindowInfo() -> DumpSnapshot {
+    let cgWindows = fetchCGWindowList()
+    var allWindows: [Window] = []
+    var layers: [UInt32: Int] = [:]
+    var subroles: [UInt32: String] = [:]
+    var excludeReasons: [UInt32: String] = [:]
+    var manageableIDs: Set<UInt32> = []
+
+    for entry in cgWindows {
+        guard !ignoredApps.contains(entry.name) else { continue }
+        let win = Window(id: entry.id, pid: entry.pid, name: entry.name, frame: entry.frame)
+        allWindows.append(win)
+        layers[entry.id] = entry.layer
+
+        guard manageableLayers.contains(entry.layer) else { continue }
+        if excludedApps.contains(entry.name) {
+            excludeReasons[entry.id] = "excluded app"
+            continue
+        }
+        guard let axWindow = findAXWindowByPidAndID(pid: entry.pid, windowID: entry.id) else {
+            excludeReasons[entry.id] = "no AX handle"
+            continue
+        }
+        var subroleRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(axWindow, kAXSubroleAttribute as CFString, &subroleRef)
+        let subrole = subroleRef as? String ?? "nil"
+        subroles[entry.id] = subrole
+        guard subrole == kAXStandardWindowSubrole as String else {
+            excludeReasons[entry.id] = "subrole: \(subrole)"
+            continue
+        }
+        var fullScreenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(axWindow, "AXFullScreen" as CFString, &fullScreenRef) == .success,
+           let isFullScreen = fullScreenRef as? Bool, isFullScreen {
+            excludeReasons[entry.id] = "full screen"
+            continue
+        }
+        manageableIDs.insert(entry.id)
+    }
+
+    return DumpSnapshot(windows: allWindows, layers: layers, subroles: subroles,
+                        excludeReasons: excludeReasons, manageableIDs: manageableIDs)
 }
