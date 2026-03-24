@@ -7,51 +7,52 @@ class ManagedWindow {
     let name: String
     let axWindow: AXUIElement
     var spaceID: CGSSpaceID
-    var frame: CGRect       // actual position (post-constraint, updated by setWindowFrame)
-    var tileFrame: CGRect?  // assigned tile area (for hit-testing and snap-back)
-    var minSize: CGSize = .zero  // minimum size constraint (from popups or other non-managed windows)
+    var frame: CGRect
 
-    init(from snapshot: WindowInfo) {
-        self.id = snapshot.id
-        self.pid = snapshot.pid
-        self.name = snapshot.name
-        self.axWindow = snapshot.axWindow
-        self.spaceID = snapshot.spaceID
-        self.frame = snapshot.frame
+    init(from info: ManagedWindowInfo) {
+        self.id = info.window.id
+        self.pid = info.window.pid
+        self.name = info.window.name
+        self.axWindow = info.axWindow
+        self.spaceID = info.spaceID
+        self.frame = info.window.frame
     }
 }
 
 var managedWindows: [UInt32: ManagedWindow] = [:]
 
-/// Resolves a focused window to its managed window. If the focused window
-/// itself isn't managed (e.g. a popup), falls back to the managed window
-/// for the same app.
-func resolveManaged(for focused: FocusedWindowInfo) -> ManagedWindow? {
+func resolveManaged(for focused: Window) -> ManagedWindow? {
     if let win = managedWindows[focused.id] { return win }
     return managedWindows.values.first(where: { $0.pid == focused.pid })
 }
 
-func reconcileWindows(snapshot: OnScreenSnapshot) {
-    let snapshotIDs = Set(snapshot.managed.map { $0.id })
+func reconcileWindows(snapshot: OnScreenSnapshot, activeSpaceID: CGSSpaceID) {
+    let snapshotIDs = Set(snapshot.manageable.map { $0.window.id })
 
-    // Remove windows that are no longer on screen
     for id in managedWindows.keys where !snapshotIDs.contains(id) {
+        let name = managedWindows[id]?.name ?? "?"
+        log("reconcile: removed window [\(id)] (\(name))")
         managedWindows.removeValue(forKey: id)
     }
 
-    // Add new windows, update existing
-    for info in snapshot.managed {
-        if let existing = managedWindows[info.id] {
-            existing.spaceID = info.spaceID
-            existing.minSize = snapshot.popupSizeByPid[info.pid] ?? .zero
-            // For non-tiled windows, the OS frame is authoritative
-            if existing.tileFrame == nil {
-                existing.frame = info.frame
+    for info in snapshot.manageable {
+        var spaceID = info.spaceID
+        if spaceID == 0 {
+            spaceID = activeSpaceID
+            warn("spaceForWindow returned nil for [\(info.window.id)] (\(info.window.name)), using active space \(activeSpaceID)")
+        }
+
+        if let existing = managedWindows[info.window.id] {
+            if existing.spaceID != spaceID {
+                log("reconcile: window [\(existing.id)] space changed \(existing.spaceID) -> \(spaceID)")
             }
+            existing.spaceID = spaceID
+            existing.frame = info.window.frame
         } else {
             let win = ManagedWindow(from: info)
-            win.minSize = snapshot.popupSizeByPid[info.pid] ?? .zero
+            win.spaceID = spaceID
             managedWindows[win.id] = win
+            log("reconcile: added window [\(win.id)] (\(win.name)) on space \(spaceID)")
         }
     }
 }

@@ -9,39 +9,39 @@ struct DisplaySpaceKey: Hashable {
 
 var bspTrees: [DisplaySpaceKey: BSPTree] = [:]
 var lastActiveSpace: CGSSpaceID = 0
-private var suppressResizeUntilTick: Int = 0
-private var currentTick: Int = 0
 
-func applyTiling(spaceID: CGSSpaceID, fast: Bool = false, skipID: UInt32? = nil) {
-    suppressResizeUntilTick = currentTick + 3
+func framesMatch(_ a: CGRect, _ b: CGRect) -> Bool {
+    return abs(a.origin.x - b.origin.x) <= frameTolerance
+        && abs(a.origin.y - b.origin.y) <= frameTolerance
+        && abs(a.width - b.width) <= frameTolerance
+        && abs(a.height - b.height) <= frameTolerance
+}
 
-    // Clear tile frames for this space — windows not in a tree get nil
-    for win in managedWindows.values where win.spaceID == spaceID {
-        win.tileFrame = nil
-    }
+// MARK: - Tile computation (pure — no AX calls)
+
+func computeTileFrames(spaceID: CGSSpaceID, popupSizeByPid: [Int32: CGSize]) -> [UInt32: CGRect] {
+    var tileFrames: [UInt32: CGRect] = [:]
 
     let minSizes = Dictionary(uniqueKeysWithValues:
-        managedWindows.values.map { ($0.id, $0.minSize) })
+        managedWindows.values.map { ($0.id, popupSizeByPid[$0.pid] ?? .zero) })
 
     for (key, tree) in bspTrees where key.spaceID == spaceID {
         guard let screen = screenForDisplayID(key.displayID) else { continue }
         let rect = visibleFrame(for: screen)
         let adjusted = tree.adjustingRatios(rect: rect, minSizes: minSizes, gap: config.gap)
         bspTrees[key] = adjusted
-        let frames = adjusted.computeFrames(rect: rect, gap: config.gap)
-        for (id, tileRect) in frames {
-            if let win = managedWindows[id] {
-                win.tileFrame = tileRect
-                if id != skipID {
-                    setWindowFrame(win, frame: tileRect, fast: fast)
-                }
-            }
+        for (id, tileRect) in adjusted.computeFrames(rect: rect, gap: config.gap) {
+            tileFrames[id] = tileRect
         }
     }
+
+    return tileFrames
 }
 
-func tileWindows(spaceID: CGSSpaceID) {
-    guard tilingEnabled else { return }
+// MARK: - BSP tree management
+
+func tileWindows(spaceID: CGSSpaceID, popupSizeByPid: [Int32: CGSize]) -> [UInt32: CGRect] {
+    guard tilingEnabled else { return [:] }
 
     let spaceChanged = spaceID != lastActiveSpace
     if spaceChanged {
@@ -68,7 +68,10 @@ func tileWindows(spaceID: CGSSpaceID) {
         let currentIDs = Set(screenWindows.map { $0.id })
         let treeIDs = Set(bspTrees[key]?.windowIDs ?? [])
 
-        guard currentIDs != treeIDs else { continue }
+        guard currentIDs != treeIDs else {
+            log("tile: no change for display \(key.displayID) space \(key.spaceID)")
+            continue
+        }
         changed = true
 
         if screenWindows.isEmpty {
@@ -84,57 +87,27 @@ func tileWindows(spaceID: CGSSpaceID) {
             orderedIDs.append(win.id)
         }
 
+        log("tile: rebuilding BSP for display \(key.displayID) space \(key.spaceID) — \(orderedIDs.count) windows: \(orderedIDs)")
         bspTrees[key] = buildBSPTree(windowIDs: orderedIDs, splitVertical: true)
     }
 
+    let tileFrames = computeTileFrames(spaceID: spaceID, popupSizeByPid: popupSizeByPid)
+
     if changed {
         log("re-tiling \(spaceWindows.count) windows on space \(spaceID)")
-        applyTiling(spaceID: spaceID)
     }
+
+    return tileFrames
 }
 
-func handleWindowResizes(snapshots: [WindowInfo], spaceID: CGSSpaceID) {
-    guard tilingEnabled else { return }
-    currentTick += 1
-    guard currentTick >= suppressResizeUntilTick else { return }
-    var resizingID: UInt32?
+// MARK: - Enforcement (compares CG reality to intent, issues AX commands)
 
-    for snapshot in snapshots {
-        guard let managed = managedWindows[snapshot.id],
-              managed.tileFrame != nil else { continue }
-
-        let sizeDiffers = abs(snapshot.frame.width - managed.frame.width) > frameTolerance
-            || abs(snapshot.frame.height - managed.frame.height) > frameTolerance
-        guard sizeDiffers else { continue }
-
-        resizingID = managed.id
-        managed.frame = snapshot.frame
-
-        let center = CGPoint(x: managed.frame.midX, y: managed.frame.midY)
-        let did = displayID(for: center)
-        let key = DisplaySpaceKey(displayID: did, spaceID: spaceID)
-        if let tree = bspTrees[key], let screen = screenForDisplayID(did) {
-            let rect = visibleFrame(for: screen)
-            log("resize \(managed.id) (\(managed.name)) — adjusting split ratio")
-            bspTrees[key] = tree.adjustingRatioForResize(
-                windowID: managed.id, newFrame: snapshot.frame, rect: rect, gap: config.gap)
-        }
-    }
-
-    if let resizingID {
-        applyTiling(spaceID: spaceID, fast: true, skipID: resizingID)
-    }
-}
-
-func snapBackDisplacedWindows(snapshots: [WindowInfo]) {
-    guard tilingEnabled else { return }
-    for snapshot in snapshots {
-        guard let managed = managedWindows[snapshot.id],
-              let tileRect = managed.tileFrame else { continue }
-        if abs(snapshot.frame.origin.x - managed.frame.origin.x) > frameTolerance
-            || abs(snapshot.frame.origin.y - managed.frame.origin.y) > frameTolerance {
-            log("snapping back \(managed.id) (\(managed.name))")
-            setWindowFrame(managed, frame: tileRect)
+func enforceTileFrames(_ tileFrames: [UInt32: CGRect]) {
+    for (id, tileFrame) in tileFrames {
+        guard let win = managedWindows[id] else { continue }
+        if !framesMatch(win.frame, tileFrame) {
+            log("enforce: [\(id)] (\(win.name)) frame \(Int(win.frame.origin.x)),\(Int(win.frame.origin.y)) \(Int(win.frame.width))x\(Int(win.frame.height)) → \(Int(tileFrame.origin.x)),\(Int(tileFrame.origin.y)) \(Int(tileFrame.width))x\(Int(tileFrame.height))")
+            setWindowFrame(win, frame: tileFrame)
         }
     }
 }

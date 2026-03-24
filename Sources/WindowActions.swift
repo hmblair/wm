@@ -14,33 +14,9 @@ func focusWindow(_ win: ManagedWindow) {
     lastSelfFocusTime = mach_absolute_time()
 }
 
-func setWindowFrame(_ win: ManagedWindow, frame: CGRect, fast: Bool = false) {
-    // Skip if the window is already at the target frame
-    if abs(win.frame.origin.x - frame.origin.x) <= sizeTolerance
-        && abs(win.frame.origin.y - frame.origin.y) <= sizeTolerance
-        && abs(win.frame.width - frame.width) <= sizeTolerance
-        && abs(win.frame.height - frame.height) <= sizeTolerance {
-        return
-    }
-
-    if fast {
-        // Fast path: position first to avoid the window briefly extending in the wrong
-        // direction, then size. No read-back or min-size clamping.
-        var position = frame.origin
-        if let posValue = AXValueCreate(.cgPoint, &position) {
-            AXUIElementSetAttributeValue(win.axWindow, kAXPositionAttribute as CFString, posValue)
-        }
-        var size = frame.size
-        if let sizeValue = AXValueCreate(.cgSize, &size) {
-            AXUIElementSetAttributeValue(win.axWindow, kAXSizeAttribute as CFString, sizeValue)
-        }
-        win.frame = frame
-        return
-    }
-
-    // Clamp frame to minimum size (from popups or other constraints), centered in tile
-    let minW = max(frame.width, win.minSize.width)
-    let minH = max(frame.height, win.minSize.height)
+func setWindowFrame(_ win: ManagedWindow, frame: CGRect) {
+    let minW = max(frame.width, 0)
+    let minH = max(frame.height, 0)
     let clampedFrame = CGRect(
         x: frame.origin.x - (minW - frame.width) / 2,
         y: frame.origin.y - (minH - frame.height) / 2,
@@ -49,14 +25,25 @@ func setWindowFrame(_ win: ManagedWindow, frame: CGRect, fast: Bool = false) {
 
     var position = clampedFrame.origin
     var size = clampedFrame.size
+    let posErr: AXError
     if let posValue = AXValueCreate(.cgPoint, &position) {
-        AXUIElementSetAttributeValue(win.axWindow, kAXPositionAttribute as CFString, posValue)
+        posErr = AXUIElementSetAttributeValue(win.axWindow, kAXPositionAttribute as CFString, posValue)
+        if posErr != .success {
+            warn("AX set position failed for [\(win.id)] (\(win.name)): \(posErr.rawValue)")
+        }
+    } else {
+        posErr = .failure
     }
+    let sizeErr: AXError
     if let sizeValue = AXValueCreate(.cgSize, &size) {
-        AXUIElementSetAttributeValue(win.axWindow, kAXSizeAttribute as CFString, sizeValue)
+        sizeErr = AXUIElementSetAttributeValue(win.axWindow, kAXSizeAttribute as CFString, sizeValue)
+        if sizeErr != .success {
+            warn("AX set size failed for [\(win.id)] (\(win.name)): \(sizeErr.rawValue)")
+        }
+    } else {
+        sizeErr = .failure
     }
 
-    // Read back actual size — the window may have refused to resize further
     var actualSizeRef: CFTypeRef?
     guard AXUIElementCopyAttributeValue(win.axWindow, kAXSizeAttribute as CFString, &actualSizeRef) == .success,
           let sRef = actualSizeRef else {

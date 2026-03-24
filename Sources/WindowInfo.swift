@@ -4,47 +4,39 @@ import ApplicationServices
 @_silgen_name("_AXUIElementGetWindow")
 func _AXUIElementGetWindow(_ element: AXUIElement, _ windowID: UnsafeMutablePointer<CGWindowID>) -> AXError
 
-struct WindowInfo {
+struct Window {
     let id: UInt32
     let pid: Int32
     let name: String
     let frame: CGRect
+}
+
+let ignoredApps: Set<String> = ["borders", "Hammerspoon", "Alfred", "Raycast"]
+
+struct ManagedWindowInfo {
+    let window: Window
     let spaceID: CGSSpaceID
     let axWindow: AXUIElement
 }
 
-struct FocusedWindowInfo {
-    let id: UInt32
-    let pid: Int32
-    let frame: CGRect
-    let name: String
-}
-
-private let minWindowDimension: CGFloat = 50
-let ignoredApps: Set<String> = ["borders", "Hammerspoon", "Alfred", "Raycast"]
-
-struct VisibleWindow {
-    let id: UInt32
-    let pid: Int32
-    let frame: CGRect
-}
-
 struct OnScreenSnapshot {
-    let managed: [WindowInfo]
-    let zOrderedWindows: [VisibleWindow]
+    let windows: [Window]
+    let manageable: [ManagedWindowInfo]
     let popupSizeByPid: [Int32: CGSize]
+    let layers: [UInt32: Int]
 }
 
 func getOnScreenWindows() -> OnScreenSnapshot {
     guard let infoList = CGWindowListCopyWindowInfo(
         [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
-    ) as? [[String: Any]] else { return OnScreenSnapshot(managed: [], zOrderedWindows: [], popupSizeByPid: [:]) }
+    ) as? [[String: Any]] else { return OnScreenSnapshot(windows: [], manageable: [], popupSizeByPid: [:], layers: [:]) }
 
     let allowedLayers: Set<Int> = [0, 1000]
-    var windows: [WindowInfo] = []
-    var zOrdered: [VisibleWindow] = []
+    var allWindows: [Window] = []
+    var manageable: [ManagedWindowInfo] = []
     var managedIDs: Set<UInt32> = []
     var allWindowsByPid: [Int32: [(id: UInt32, frame: CGRect)]] = [:]
+    var layers: [UInt32: Int] = [:]
 
     for info in infoList {
         guard let id = info[kCGWindowNumber as String] as? UInt32,
@@ -58,24 +50,21 @@ func getOnScreenWindows() -> OnScreenSnapshot {
             x: boundsDict["X"] ?? 0, y: boundsDict["Y"] ?? 0,
             width: boundsDict["Width"] ?? 0, height: boundsDict["Height"] ?? 0
         )
-        if frame.width < minWindowDimension || frame.height < minWindowDimension { continue }
-
-        zOrdered.append(VisibleWindow(id: id, pid: pid, frame: frame))
+        let win = Window(id: id, pid: pid, name: name, frame: frame)
+        allWindows.append(win)
         allWindowsByPid[pid, default: []].append((id: id, frame: frame))
+        layers[id] = layer
 
         guard let axWindow = findAXWindowByPidAndID(pid: pid, windowID: id) else { continue }
         var subroleRef: CFTypeRef?
         AXUIElementCopyAttributeValue(axWindow, kAXSubroleAttribute as CFString, &subroleRef)
         guard (subroleRef as? String) == kAXStandardWindowSubrole as String else { continue }
         let space = spaceForWindow(id) ?? 0
-        windows.append(WindowInfo(id: id, pid: pid, name: name, frame: frame, spaceID: space, axWindow: axWindow))
+        manageable.append(ManagedWindowInfo(window: win, spaceID: space, axWindow: axWindow))
         managedIDs.insert(id)
     }
 
-    // Compute minimum parent size per PID to contain all non-managed windows.
-    // For each popup, the parent must be large enough that the popup
-    // (at its current offset from the parent origin) fits entirely within it.
-    let managedFrameByPid = Dictionary(windows.map { ($0.pid, $0.frame) }, uniquingKeysWith: { a, _ in a })
+    let managedFrameByPid = Dictionary(manageable.map { ($0.window.pid, $0.window.frame) }, uniquingKeysWith: { a, _ in a })
     var popupSizeByPid: [Int32: CGSize] = [:]
     for (pid, pidWindows) in allWindowsByPid {
         guard let parentFrame = managedFrameByPid[pid] else { continue }
@@ -90,10 +79,10 @@ func getOnScreenWindows() -> OnScreenSnapshot {
         }
     }
 
-    return OnScreenSnapshot(managed: windows, zOrderedWindows: zOrdered, popupSizeByPid: popupSizeByPid)
+    return OnScreenSnapshot(windows: allWindows, manageable: manageable, popupSizeByPid: popupSizeByPid, layers: layers)
 }
 
-func getFocusedWindowInfo() -> FocusedWindowInfo? {
+func getFocusedWindow() -> Window? {
     guard let frontApp = NSWorkspace.shared.frontmostApplication else { return nil }
     let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
 
@@ -118,7 +107,7 @@ func getFocusedWindowInfo() -> FocusedWindowInfo? {
     AXValueGetValue(pRef as! AXValue, .cgPoint, &pos)
     AXValueGetValue(sRef as! AXValue, .cgSize, &size)
 
-    return FocusedWindowInfo(id: windowID, pid: frontApp.processIdentifier, frame: CGRect(origin: pos, size: size), name: frontApp.localizedName ?? "unknown")
+    return Window(id: windowID, pid: frontApp.processIdentifier, name: frontApp.localizedName ?? "unknown", frame: CGRect(origin: pos, size: size))
 }
 
 func findAXWindowByPidAndID(pid: Int32, windowID: UInt32) -> AXUIElement? {
