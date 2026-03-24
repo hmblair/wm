@@ -9,8 +9,10 @@ struct DisplaySpaceKey: Hashable {
 
 var bspTrees: [DisplaySpaceKey: BSPTree] = [:]
 var lastActiveSpace: CGSSpaceID = 0
+private var suppressResizeUntilTick: Int = 0
+private var currentTick: Int = 0
 
-func applyTiling(spaceID: CGSSpaceID) {
+func applyTiling(spaceID: CGSSpaceID, fast: Bool = false, skipID: UInt32? = nil) {
     // Clear tile frames for this space — windows not in a tree get nil
     for win in managedWindows.values where win.spaceID == spaceID {
         win.tileFrame = nil
@@ -28,7 +30,9 @@ func applyTiling(spaceID: CGSSpaceID) {
         for (id, tileRect) in frames {
             if let win = managedWindows[id] {
                 win.tileFrame = tileRect
-                setWindowFrame(win, frame: tileRect)
+                if id != skipID {
+                    setWindowFrame(win, frame: tileRect, fast: fast)
+                }
             }
         }
     }
@@ -84,12 +88,17 @@ func tileWindows(spaceID: CGSSpaceID) {
     if changed {
         log("re-tiling \(spaceWindows.count) windows on space \(spaceID)")
         applyTiling(spaceID: spaceID)
+        // Suppress resize detection for a few ticks so stale CG snapshots
+        // don't get misinterpreted as user resizes
+        suppressResizeUntilTick = currentTick + 3
     }
 }
 
 func handleWindowResizes(snapshots: [WindowInfo], spaceID: CGSSpaceID) {
     guard tilingEnabled else { return }
-    var needsRetile = false
+    currentTick += 1
+    guard currentTick >= suppressResizeUntilTick else { return }
+    var resizingID: UInt32?
 
     for snapshot in snapshots {
         guard let managed = managedWindows[snapshot.id],
@@ -99,6 +108,9 @@ func handleWindowResizes(snapshots: [WindowInfo], spaceID: CGSSpaceID) {
             || abs(snapshot.frame.height - managed.frame.height) > frameTolerance
         guard sizeDiffers else { continue }
 
+        resizingID = managed.id
+        managed.frame = snapshot.frame
+
         let center = CGPoint(x: managed.frame.midX, y: managed.frame.midY)
         let did = displayID(for: center)
         let key = DisplaySpaceKey(displayID: did, spaceID: spaceID)
@@ -107,12 +119,11 @@ func handleWindowResizes(snapshots: [WindowInfo], spaceID: CGSSpaceID) {
             log("resize \(managed.id) (\(managed.name)) — adjusting split ratio")
             bspTrees[key] = tree.adjustingRatioForResize(
                 windowID: managed.id, newFrame: snapshot.frame, rect: rect, gap: config.gap)
-            needsRetile = true
         }
     }
 
-    if needsRetile {
-        applyTiling(spaceID: spaceID)
+    if let resizingID {
+        applyTiling(spaceID: spaceID, fast: true, skipID: resizingID)
     }
 }
 
