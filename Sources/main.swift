@@ -61,7 +61,7 @@ var lastMousePosition: CGPoint = {
 
 func handleFocusDirection(_ direction: Direction, focused: Window, spaceID: CGSSpaceID) {
     guard let managed = resolveManaged(for: focused) else { return }
-    let candidates = managedWindows.values.filter { $0.id != managed.id && $0.spaceID == spaceID }
+    let candidates = managedWindows.values.filter { $0.id != managed.id }
     guard let target = nearestWindow(from: managed.frame, direction: direction, among: Array(candidates)) else { return }
     log("cmd+arrow focus: \(target.id) (\(target.name))")
     focusWindow(target)
@@ -100,7 +100,7 @@ var lastFocusedWindow: UInt32 = 0
 var lastSelfFocusTime: UInt64 = 0
 private let selfFocusCooldownNs: UInt64 = 150_000_000
 
-func handleMousePosition(_ pos: CGPoint, windows: [Window], spaceID: CGSSpaceID) {
+func handleMousePosition(_ pos: CGPoint, windows: [Window]) {
     for win in windows {
         guard win.frame.contains(pos) else { continue }
 
@@ -169,7 +169,7 @@ if CommandLine.arguments.contains("--dump") {
     }
 
     let dump = dumpWindowInfo()
-    reconcileWindows(cgWindows: fetchCGWindowList(), activeSpaceID: spaceID)
+    reconcileWindows(cgWindows: fetchCGWindowList())
     let tileFrames = tilingEnabled ? tileWindows(spaceID: spaceID) : [:]
 
     print("\nAll on-screen windows (z-order):")
@@ -255,7 +255,7 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     let tick = TickState()
 
     // 1. Reconcile managed windows with reality (AX lookups only for new windows)
-    reconcileWindows(cgWindows: tick.cgWindows, activeSpaceID: tick.spaceID)
+    reconcileWindows(cgWindows: tick.cgWindows)
 
     // 2. Compute tile layout (rebuilds BSP if window set changed)
     var tileFrames = tileWindows(spaceID: tick.spaceID)
@@ -279,7 +279,7 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     enforceTileFrames(tileFrames)
 
     // 5. Focus-follows-mouse
-    handleMousePosition(lastMousePosition, windows: tick.windows, spaceID: tick.spaceID)
+    handleMousePosition(lastMousePosition, windows: tick.windows)
 
     // 6. External focus tracking
     if let focused = tick.focusedWindow {

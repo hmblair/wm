@@ -45,10 +45,8 @@ func tileWindows(spaceID: CGSSpaceID) -> [UInt32: CGRect] {
         lastActiveSpace = spaceID
     }
 
-    let spaceWindows = managedWindows.values.filter { $0.spaceID == spaceID }
-
     var windowsByDisplay: [CGDirectDisplayID: [ManagedWindow]] = [:]
-    for win in spaceWindows {
+    for win in managedWindows.values {
         let center = CGPoint(x: win.frame.midX, y: win.frame.midY)
         let did = displayID(for: center)
         windowsByDisplay[did, default: []].append(win)
@@ -90,7 +88,7 @@ func tileWindows(spaceID: CGSSpaceID) -> [UInt32: CGRect] {
     let tileFrames = computeTileFrames(spaceID: spaceID)
 
     if changed {
-        log("re-tiling \(spaceWindows.count) windows on space \(spaceID)")
+        log("re-tiling \(managedWindows.count) windows on space \(spaceID)")
     }
 
     return tileFrames
