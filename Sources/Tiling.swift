@@ -27,7 +27,15 @@ func computeTileFrames(spaceID: CGSSpaceID) -> [UInt32: CGRect] {
         guard let screen = screenForDisplayID(key.displayID) else { continue }
         let rect = visibleFrame(for: screen)
         for (id, tileRect) in tree.computeFrames(rect: rect, gap: config.gap) {
-            tileFrames[id] = tileRect
+            if let actualSize = managedWindows[id]?.actualSize {
+                let w = min(actualSize.width, tileRect.width)
+                let h = min(actualSize.height, tileRect.height)
+                let x = tileRect.origin.x + (tileRect.width - w) / 2
+                let y = tileRect.origin.y + (tileRect.height - h) / 2
+                tileFrames[id] = CGRect(x: x, y: y, width: w, height: h)
+            } else {
+                tileFrames[id] = tileRect
+            }
         }
     }
 

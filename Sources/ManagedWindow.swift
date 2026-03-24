@@ -7,6 +7,7 @@ class ManagedWindow {
     let name: String
     let axWindow: AXUIElement
     var frame: CGRect
+    var actualSize: CGSize?
 
     init(id: UInt32, pid: Int32, name: String, axWindow: AXUIElement, frame: CGRect) {
         self.id = id

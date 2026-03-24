@@ -28,28 +28,22 @@ func setWindowFrame(_ win: ManagedWindow, frame: CGRect) {
         }
     }
 
-    // Read back actual size — app may enforce a minimum
+    // Read back actual size — app may enforce a maximum
     var actualSizeRef: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(win.axWindow, kAXSizeAttribute as CFString, &actualSizeRef) == .success,
-          let sRef = actualSizeRef else {
-        win.frame = frame
-        return
-    }
-    var actualSize = CGSize.zero
-    AXValueGetValue(sRef as! AXValue, .cgSize, &actualSize)
-
-    // If the app gave us a smaller size, center the window in the tile
-    let dw = frame.width - actualSize.width
-    let dh = frame.height - actualSize.height
-    if dw > frameTolerance || dh > frameTolerance {
-        var centered = CGPoint(x: frame.origin.x + dw / 2, y: frame.origin.y + dh / 2)
-        if let posValue = AXValueCreate(.cgPoint, &centered) {
-            AXUIElementSetAttributeValue(win.axWindow, kAXPositionAttribute as CFString, posValue)
+    if AXUIElementCopyAttributeValue(win.axWindow, kAXSizeAttribute as CFString, &actualSizeRef) == .success,
+       let sRef = actualSizeRef {
+        var readBack = CGSize.zero
+        AXValueGetValue(sRef as! AXValue, .cgSize, &readBack)
+        let dw = frame.width - readBack.width
+        let dh = frame.height - readBack.height
+        if dw > frameTolerance || dh > frameTolerance {
+            win.actualSize = readBack
+        } else {
+            win.actualSize = nil
         }
-        win.frame = CGRect(origin: centered, size: actualSize)
-    } else {
-        win.frame = frame
     }
+
+    win.frame = frame
 }
 
 func warpMouse(to frame: CGRect) {
