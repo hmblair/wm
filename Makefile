@@ -12,6 +12,10 @@ install: build
 	@mkdir -p $(LAUNCHD_DIR)
 	@sed 's|/opt/homebrew/bin/focus-follows-mouse|$(PREFIX)/bin/focus-follows-mouse|g' \
 		resources/$(PLIST_NAME) > $(LAUNCHD_DIR)/$(PLIST_NAME)
+	@defaults write -g EnableTilingByEdgeDrag -bool false
+	@defaults write -g EnableTopTilingByEdgeDrag -bool false
+	@defaults write -g EnableTilingOptionAccelerator -bool false
+	@echo "Disabled macOS built-in tiling (logout required to take effect)."
 	@echo "Installed launchd plist to $(LAUNCHD_DIR)/$(PLIST_NAME)"
 	@echo "Run 'make load' to start the service."
 
