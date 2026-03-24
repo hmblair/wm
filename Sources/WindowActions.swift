@@ -1,7 +1,6 @@
 import Cocoa
 import ApplicationServices
 
-
 func focusWindow(_ win: ManagedWindow) {
     if let runningApp = NSRunningApplication(processIdentifier: win.pid) {
         runningApp.activate()
@@ -14,54 +13,42 @@ func focusWindow(_ win: ManagedWindow) {
 }
 
 func setWindowFrame(_ win: ManagedWindow, frame: CGRect) {
-    let minW = max(frame.width, 0)
-    let minH = max(frame.height, 0)
-    let clampedFrame = CGRect(
-        x: frame.origin.x - (minW - frame.width) / 2,
-        y: frame.origin.y - (minH - frame.height) / 2,
-        width: minW, height: minH
-    )
-
-    var position = clampedFrame.origin
-    var size = clampedFrame.size
-    let posErr: AXError
+    var position = frame.origin
+    var size = frame.size
     if let posValue = AXValueCreate(.cgPoint, &position) {
-        posErr = AXUIElementSetAttributeValue(win.axWindow, kAXPositionAttribute as CFString, posValue)
-        if posErr != .success {
-            warn("AX set position failed for [\(win.id)] (\(win.name)): \(posErr.rawValue)")
+        let err = AXUIElementSetAttributeValue(win.axWindow, kAXPositionAttribute as CFString, posValue)
+        if err != .success {
+            warn("AX set position failed for [\(win.id)] (\(win.name)): \(err.rawValue)")
         }
-    } else {
-        posErr = .failure
     }
-    let sizeErr: AXError
     if let sizeValue = AXValueCreate(.cgSize, &size) {
-        sizeErr = AXUIElementSetAttributeValue(win.axWindow, kAXSizeAttribute as CFString, sizeValue)
-        if sizeErr != .success {
-            warn("AX set size failed for [\(win.id)] (\(win.name)): \(sizeErr.rawValue)")
+        let err = AXUIElementSetAttributeValue(win.axWindow, kAXSizeAttribute as CFString, sizeValue)
+        if err != .success {
+            warn("AX set size failed for [\(win.id)] (\(win.name)): \(err.rawValue)")
         }
-    } else {
-        sizeErr = .failure
     }
 
+    // Read back actual size — app may enforce a minimum
     var actualSizeRef: CFTypeRef?
     guard AXUIElementCopyAttributeValue(win.axWindow, kAXSizeAttribute as CFString, &actualSizeRef) == .success,
           let sRef = actualSizeRef else {
-        win.frame = clampedFrame
+        win.frame = frame
         return
     }
     var actualSize = CGSize.zero
     AXValueGetValue(sRef as! AXValue, .cgSize, &actualSize)
 
-    let dw = clampedFrame.width - actualSize.width
-    let dh = clampedFrame.height - actualSize.height
+    // If the app gave us a smaller size, center the window in the tile
+    let dw = frame.width - actualSize.width
+    let dh = frame.height - actualSize.height
     if dw > frameTolerance || dh > frameTolerance {
-        var centered = CGPoint(x: clampedFrame.origin.x + dw / 2, y: clampedFrame.origin.y + dh / 2)
+        var centered = CGPoint(x: frame.origin.x + dw / 2, y: frame.origin.y + dh / 2)
         if let posValue = AXValueCreate(.cgPoint, &centered) {
             AXUIElementSetAttributeValue(win.axWindow, kAXPositionAttribute as CFString, posValue)
         }
         win.frame = CGRect(origin: centered, size: actualSize)
     } else {
-        win.frame = clampedFrame
+        win.frame = frame
     }
 }
 

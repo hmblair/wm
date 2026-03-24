@@ -86,7 +86,7 @@ func handleSwapDirection(_ direction: Direction, focused: Window, spaceID: CGSSp
         bspTrees[key] = tree.swappingWindows(managed.id, target.id)
     }
 
-    let tileFrames = computeTileFrames(spaceID: spaceID, popupSizeByPid: [:])
+    let tileFrames = computeTileFrames(spaceID: spaceID)
     enforceTileFrames(tileFrames)
     warpMouse(to: managed.frame)
     return tileFrames
@@ -168,7 +168,7 @@ if CommandLine.arguments.contains("--dump") {
 
     let snapshot = getOnScreenWindows()
     reconcileWindows(snapshot: snapshot, activeSpaceID: spaceID)
-    let tileFrames = tilingEnabled ? tileWindows(spaceID: spaceID, popupSizeByPid: snapshot.popupSizeByPid) : [:]
+    let tileFrames = tilingEnabled ? tileWindows(spaceID: spaceID) : [:]
     let manageableIDs = Set(snapshot.manageable.map { $0.window.id })
 
     print("\nAll on-screen windows (z-order):")
@@ -259,7 +259,7 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     reconcileWindows(snapshot: snapshot, activeSpaceID: spaceID)
 
     // 3. Compute tile layout (rebuilds BSP if window set changed)
-    var tileFrames = tileWindows(spaceID: spaceID, popupSizeByPid: snapshot.popupSizeByPid)
+    var tileFrames = tileWindows(spaceID: spaceID)
 
     // 4. Process queued key commands
     let commands = pendingKeyCommands

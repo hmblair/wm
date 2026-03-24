@@ -26,7 +26,6 @@ struct ManagedWindowInfo {
 struct OnScreenSnapshot {
     let windows: [Window]
     let manageable: [ManagedWindowInfo]
-    let popupSizeByPid: [Int32: CGSize]
     let layers: [UInt32: Int]
     let subroles: [UInt32: String]
     let excludeReasons: [UInt32: String]
@@ -36,14 +35,12 @@ func getOnScreenWindows() -> OnScreenSnapshot {
     guard let infoList = CGWindowListCopyWindowInfo(
         [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
     ) as? [[String: Any]] else {
-        return OnScreenSnapshot(windows: [], manageable: [], popupSizeByPid: [:], layers: [:], subroles: [:], excludeReasons: [:])
+        return OnScreenSnapshot(windows: [], manageable: [], layers: [:], subroles: [:], excludeReasons: [:])
     }
 
-    let allowedLayers: Set<Int> = [0, 1000]
+    let manageableLayers: Set<Int> = [0, 1000]
     var allWindows: [Window] = []
     var manageable: [ManagedWindowInfo] = []
-    var managedIDs: Set<UInt32> = []
-    var allWindowsByPid: [Int32: [(id: UInt32, frame: CGRect)]] = [:]
     var layers: [UInt32: Int] = [:]
     var subroles: [UInt32: String] = [:]
     var excludeReasons: [UInt32: String] = [:]
@@ -52,7 +49,7 @@ func getOnScreenWindows() -> OnScreenSnapshot {
         guard let id = info[kCGWindowNumber as String] as? UInt32,
               let pid = info[kCGWindowOwnerPID as String] as? Int32,
               let boundsDict = info[kCGWindowBounds as String] as? [String: CGFloat],
-              let layer = info[kCGWindowLayer as String] as? Int, allowedLayers.contains(layer),
+              let layer = info[kCGWindowLayer as String] as? Int,
               let name = info[kCGWindowOwnerName as String] as? String,
               !ignoredApps.contains(name)
         else { continue }
@@ -62,9 +59,9 @@ func getOnScreenWindows() -> OnScreenSnapshot {
         )
         let win = Window(id: id, pid: pid, name: name, frame: frame)
         allWindows.append(win)
-        allWindowsByPid[pid, default: []].append((id: id, frame: frame))
         layers[id] = layer
 
+        guard manageableLayers.contains(layer) else { continue }
         guard let axWindow = findAXWindowByPidAndID(pid: pid, windowID: id) else {
             excludeReasons[id] = "no AX handle"
             continue
@@ -85,25 +82,9 @@ func getOnScreenWindows() -> OnScreenSnapshot {
         }
         let space = spaceForWindow(id) ?? 0
         manageable.append(ManagedWindowInfo(window: win, spaceID: space, axWindow: axWindow))
-        managedIDs.insert(id)
     }
 
-    let managedFrameByPid = Dictionary(manageable.map { ($0.window.pid, $0.window.frame) }, uniquingKeysWith: { a, _ in a })
-    var popupSizeByPid: [Int32: CGSize] = [:]
-    for (pid, pidWindows) in allWindowsByPid {
-        guard let parentFrame = managedFrameByPid[pid] else { continue }
-        for w in pidWindows where !managedIDs.contains(w.id) {
-            let requiredW = (w.frame.maxX - parentFrame.origin.x)
-            let requiredH = (w.frame.maxY - parentFrame.origin.y)
-            let existing = popupSizeByPid[pid] ?? .zero
-            popupSizeByPid[pid] = CGSize(
-                width: max(existing.width, requiredW),
-                height: max(existing.height, requiredH)
-            )
-        }
-    }
-
-    return OnScreenSnapshot(windows: allWindows, manageable: manageable, popupSizeByPid: popupSizeByPid,
+    return OnScreenSnapshot(windows: allWindows, manageable: manageable,
                             layers: layers, subroles: subroles, excludeReasons: excludeReasons)
 }
 

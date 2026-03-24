@@ -20,18 +20,13 @@ func framesMatch(_ a: CGRect, _ b: CGRect) -> Bool {
 
 // MARK: - Tile computation (pure — no AX calls)
 
-func computeTileFrames(spaceID: CGSSpaceID, popupSizeByPid: [Int32: CGSize]) -> [UInt32: CGRect] {
+func computeTileFrames(spaceID: CGSSpaceID) -> [UInt32: CGRect] {
     var tileFrames: [UInt32: CGRect] = [:]
-
-    let minSizes = Dictionary(uniqueKeysWithValues:
-        managedWindows.values.map { ($0.id, popupSizeByPid[$0.pid] ?? .zero) })
 
     for (key, tree) in bspTrees where key.spaceID == spaceID {
         guard let screen = screenForDisplayID(key.displayID) else { continue }
         let rect = visibleFrame(for: screen)
-        let adjusted = tree.adjustingRatios(rect: rect, minSizes: minSizes, gap: config.gap)
-        bspTrees[key] = adjusted
-        for (id, tileRect) in adjusted.computeFrames(rect: rect, gap: config.gap) {
+        for (id, tileRect) in tree.computeFrames(rect: rect, gap: config.gap) {
             tileFrames[id] = tileRect
         }
     }
@@ -41,7 +36,7 @@ func computeTileFrames(spaceID: CGSSpaceID, popupSizeByPid: [Int32: CGSize]) -> 
 
 // MARK: - BSP tree management
 
-func tileWindows(spaceID: CGSSpaceID, popupSizeByPid: [Int32: CGSize]) -> [UInt32: CGRect] {
+func tileWindows(spaceID: CGSSpaceID) -> [UInt32: CGRect] {
     guard tilingEnabled else { return [:] }
 
     let spaceChanged = spaceID != lastActiveSpace
@@ -92,7 +87,7 @@ func tileWindows(spaceID: CGSSpaceID, popupSizeByPid: [Int32: CGSize]) -> [UInt3
         bspTrees[key] = buildBSPTree(windowIDs: orderedIDs, splitVertical: true)
     }
 
-    let tileFrames = computeTileFrames(spaceID: spaceID, popupSizeByPid: popupSizeByPid)
+    let tileFrames = computeTileFrames(spaceID: spaceID)
 
     if changed {
         log("re-tiling \(spaceWindows.count) windows on space \(spaceID)")
