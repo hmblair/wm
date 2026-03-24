@@ -38,8 +38,6 @@ func setWindowFrame(_ win: ManagedWindow, frame: CGRect) {
         let dh = frame.height - readBack.height
         if dw > frameTolerance || dh > frameTolerance {
             win.actualSize = readBack
-        } else {
-            win.actualSize = nil
         }
     }
 
