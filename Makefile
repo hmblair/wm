@@ -1,4 +1,4 @@
-PREFIX ?= /opt/homebrew
+PREFIX ?= $(HOME)/.local
 PLIST_NAME = com.hmblair.focus-follows-mouse.plist
 LAUNCHD_DIR = $(HOME)/Library/LaunchAgents
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "unknown")
@@ -13,9 +13,10 @@ build: $(VERSION_FILE)
 	swift build -c release
 
 install: build
+	@mkdir -p $(PREFIX)/bin
 	cp .build/release/focus-follows-mouse $(PREFIX)/bin/focus-follows-mouse
 	@mkdir -p $(LAUNCHD_DIR)
-	@sed 's|/opt/homebrew/bin/focus-follows-mouse|$(PREFIX)/bin/focus-follows-mouse|g' \
+	@sed 's|__BINARY_PATH__|$(PREFIX)/bin/focus-follows-mouse|g' \
 		resources/$(PLIST_NAME) > $(LAUNCHD_DIR)/$(PLIST_NAME)
 	@defaults write -g EnableTilingByEdgeDrag -bool false
 	@defaults write -g EnableTopTilingByEdgeDrag -bool false
@@ -29,10 +30,10 @@ uninstall: unload
 	rm -f $(LAUNCHD_DIR)/$(PLIST_NAME)
 
 load:
-	launchctl load -w $(LAUNCHD_DIR)/$(PLIST_NAME)
+	launchctl bootstrap gui/$(shell id -u) $(LAUNCHD_DIR)/$(PLIST_NAME)
 
 unload:
-	-launchctl unload $(LAUNCHD_DIR)/$(PLIST_NAME) 2>/dev/null
+	-launchctl bootout gui/$(shell id -u)/com.hmblair.focus-follows-mouse 2>/dev/null
 
 restart: unload load
 

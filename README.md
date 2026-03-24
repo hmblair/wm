@@ -15,7 +15,7 @@ A lightweight Swift daemon that focuses whichever window the mouse cursor moves 
 make install
 ```
 
-This builds a release binary and copies it to `/opt/homebrew/bin/`. Override the install prefix with `PREFIX=/usr/local make install`.
+This builds a release binary and copies it to `~/.local/bin/`. Override the install prefix with `PREFIX=/usr/local make install`.
 
 ## Usage
 

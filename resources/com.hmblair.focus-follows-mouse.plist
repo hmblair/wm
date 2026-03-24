@@ -6,7 +6,7 @@
     <string>com.hmblair.focus-follows-mouse</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/opt/homebrew/bin/focus-follows-mouse</string>
+        <string>__BINARY_PATH__</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
