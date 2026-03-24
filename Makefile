@@ -1,10 +1,15 @@
 PREFIX ?= /opt/homebrew
 PLIST_NAME = com.hmblair.focus-follows-mouse.plist
 LAUNCHD_DIR = $(HOME)/Library/LaunchAgents
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "unknown")
+VERSION_FILE = Sources/Version.swift
 
 .PHONY: build install uninstall clean load unload restart
 
-build:
+$(VERSION_FILE): .git/HEAD .git/index
+	@echo 'let appVersion = "$(VERSION)"' > $(VERSION_FILE)
+
+build: $(VERSION_FILE)
 	swift build -c release
 
 install: build

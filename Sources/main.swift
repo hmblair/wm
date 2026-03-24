@@ -4,12 +4,17 @@ import os
 
 // --- Argument parsing ---
 
-let knownArgs: Set<String> = ["--verbose", "-v", "--dump", "--no-tile"]
+let knownArgs: Set<String> = ["--verbose", "-v", "--dump", "--no-tile", "--version"]
 for arg in CommandLine.arguments.dropFirst() {
     if !knownArgs.contains(arg) {
-        fputs("unknown argument: \(arg)\nusage: focus-follows-mouse [--verbose|-v] [--dump] [--no-tile]\n", stderr)
+        fputs("unknown argument: \(arg)\nusage: focus-follows-mouse [--verbose|-v] [--dump] [--no-tile] [--version]\n", stderr)
         exit(1)
     }
+}
+
+if CommandLine.arguments.contains("--version") {
+    print("focus-follows-mouse \(appVersion)")
+    exit(0)
 }
 
 let verbose = CommandLine.arguments.contains("--verbose") || CommandLine.arguments.contains("-v")

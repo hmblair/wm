@@ -28,6 +28,7 @@ focus-follows-mouse [--verbose|-v] [--dump] [--no-tile]
 | `--verbose`, `-v` | Print timestamped debug output to stderr |
 | `--dump` | Dump window info for the current space and exit |
 | `--no-tile` | Disable the built-in tiling window manager |
+| `--version` | Print version and exit |
 
 ### Running as a launchd service (recommended)
 
