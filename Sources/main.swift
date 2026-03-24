@@ -90,15 +90,26 @@ var lastFocusedWindow: UInt32 = 0
 var lastSelfFocusTime: UInt64 = 0
 private let selfFocusCooldownNs: UInt64 = 150_000_000
 
-func handleMousePosition(_ pos: CGPoint, spaceID: CGSSpaceID) {
-    for win in managedWindows.values where win.spaceID == spaceID {
-        if win.frame.contains(pos) {
-            if win.id != lastFocusedWindow {
-                log("mouse focus: \(win.id) (\(win.name)) at \(Int(pos.x)),\(Int(pos.y))")
-                focusWindow(win)
+func handleMousePosition(_ pos: CGPoint, zOrderedWindows: [VisibleWindow], spaceID: CGSSpaceID) {
+    // Hit-test in z-order (front to back) — first match is the topmost window
+    for win in zOrderedWindows {
+        guard win.frame.contains(pos) else { continue }
+
+        if let managed = managedWindows[win.id] {
+            if managed.id != lastFocusedWindow {
+                log("mouse focus: \(managed.id) (\(managed.name)) at \(Int(pos.x)),\(Int(pos.y))")
+                focusWindow(managed)
             }
-            return
+        } else {
+            if let app = NSRunningApplication(processIdentifier: win.pid) {
+                if !app.isActive {
+                    log("mouse focus: \(win.id) (pid \(win.pid)) at \(Int(pos.x)),\(Int(pos.y))")
+                    app.activate()
+                }
+                lastFocusedWindow = 0
+            }
         }
+        return
     }
 
     // Cursor is over the desktop — unfocus by activating Finder
@@ -127,7 +138,6 @@ func checkExternalFocusChange(focused: FocusedWindowInfo) {
 
     log("external focus change: warp to \(focused.id) (\(focused.name))")
     lastFocusedWindow = focused.id
-    // Prefer managed frame (post-tiling), fall back to AX-reported frame
     let frame = managedWindows[focused.id]?.frame ?? focused.frame
     warpMouse(to: frame)
 }
@@ -242,7 +252,7 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     handleWindowResizes(snapshots: snapshot.managed, spaceID: spaceID)
 
     // Focus-follows-mouse
-    handleMousePosition(lastMousePosition, spaceID: spaceID)
+    handleMousePosition(lastMousePosition, zOrderedWindows: snapshot.zOrderedWindows, spaceID: spaceID)
 
     // External focus tracking
     if let focused = focused {

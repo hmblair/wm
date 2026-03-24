@@ -23,17 +23,26 @@ struct FocusedWindowInfo {
 private let minWindowDimension: CGFloat = 50
 let ignoredApps: Set<String> = ["borders", "Hammerspoon", "Alfred", "Raycast"]
 
+struct VisibleWindow {
+    let id: UInt32
+    let pid: Int32
+    let frame: CGRect
+}
+
 struct OnScreenSnapshot {
     let managed: [WindowInfo]
+    let zOrderedWindows: [VisibleWindow]
     let popupSizeByPid: [Int32: CGSize]
 }
 
 func getOnScreenWindows() -> OnScreenSnapshot {
     guard let infoList = CGWindowListCopyWindowInfo(
         [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
-    ) as? [[String: Any]] else { return OnScreenSnapshot(managed: [], popupSizeByPid: [:]) }
+    ) as? [[String: Any]] else { return OnScreenSnapshot(managed: [], zOrderedWindows: [], popupSizeByPid: [:]) }
 
+    let allowedLayers: Set<Int> = [0, 1000]
     var windows: [WindowInfo] = []
+    var zOrdered: [VisibleWindow] = []
     var managedIDs: Set<UInt32> = []
     var allWindowsByPid: [Int32: [(id: UInt32, frame: CGRect)]] = [:]
 
@@ -41,7 +50,7 @@ func getOnScreenWindows() -> OnScreenSnapshot {
         guard let id = info[kCGWindowNumber as String] as? UInt32,
               let pid = info[kCGWindowOwnerPID as String] as? Int32,
               let boundsDict = info[kCGWindowBounds as String] as? [String: CGFloat],
-              let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
+              let layer = info[kCGWindowLayer as String] as? Int, allowedLayers.contains(layer),
               let name = info[kCGWindowOwnerName as String] as? String,
               !ignoredApps.contains(name)
         else { continue }
@@ -51,6 +60,7 @@ func getOnScreenWindows() -> OnScreenSnapshot {
         )
         if frame.width < minWindowDimension || frame.height < minWindowDimension { continue }
 
+        zOrdered.append(VisibleWindow(id: id, pid: pid, frame: frame))
         allWindowsByPid[pid, default: []].append((id: id, frame: frame))
 
         guard let axWindow = findAXWindowByPidAndID(pid: pid, windowID: id) else { continue }
@@ -80,7 +90,7 @@ func getOnScreenWindows() -> OnScreenSnapshot {
         }
     }
 
-    return OnScreenSnapshot(managed: windows, popupSizeByPid: popupSizeByPid)
+    return OnScreenSnapshot(managed: windows, zOrderedWindows: zOrdered, popupSizeByPid: popupSizeByPid)
 }
 
 func getFocusedWindowInfo() -> FocusedWindowInfo? {
