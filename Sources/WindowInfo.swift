@@ -59,6 +59,9 @@ func getOnScreenWindows() -> OnScreenSnapshot {
         var subroleRef: CFTypeRef?
         AXUIElementCopyAttributeValue(axWindow, kAXSubroleAttribute as CFString, &subroleRef)
         guard (subroleRef as? String) == kAXStandardWindowSubrole as String else { continue }
+        var fullScreenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(axWindow, "AXFullScreen" as CFString, &fullScreenRef) == .success,
+           let isFullScreen = fullScreenRef as? Bool, isFullScreen { continue }
         let space = spaceForWindow(id) ?? 0
         manageable.append(ManagedWindowInfo(window: win, spaceID: space, axWindow: axWindow))
         managedIDs.insert(id)

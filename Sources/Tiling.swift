@@ -1,4 +1,5 @@
-import CoreGraphics
+import Cocoa
+import ApplicationServices
 
 private let frameTolerance: CGFloat = 2
 
@@ -103,6 +104,9 @@ func tileWindows(spaceID: CGSSpaceID, popupSizeByPid: [Int32: CGSize]) -> [UInt3
 // MARK: - Enforcement (compares CG reality to intent, issues AX commands)
 
 func enforceTileFrames(_ tileFrames: [UInt32: CGRect]) {
+    let mouseDown = NSEvent.pressedMouseButtons & 0x1 != 0
+    if mouseDown { return }
+
     for (id, tileFrame) in tileFrames {
         guard let win = managedWindows[id] else { continue }
         if !framesMatch(win.frame, tileFrame) {
