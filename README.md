@@ -45,7 +45,13 @@ make unload    # stop the service
 make uninstall # remove binary and plist
 ```
 
-Logs are written to `/tmp/focus-follows-mouse.log`.
+Logs are available via macOS unified logging:
+
+```
+log stream --predicate 'subsystem == "com.hmblair.focus-follows-mouse"' --level debug
+```
+
+Startup errors are also written to `/tmp/focus-follows-mouse.log`.
 
 ### Running manually
 
@@ -54,6 +60,51 @@ focus-follows-mouse
 ```
 
 The process runs in the foreground and exits cleanly on SIGINT/SIGTERM.
+
+## Configuration
+
+Configuration is read from `~/.config/focus-follows-mouse/config.toml`. All fields are optional and fall back to sensible defaults.
+
+```toml
+# Gap in points between tiled windows (default: 8)
+gap = 8
+
+# How often to poll for window changes, in seconds (default: 0.016)
+poll_interval = 0.016
+
+# Apps whose windows are completely invisible to the daemon.
+# They won't be focused, tiled, or tracked in any way.
+ignored_apps = ["borders", "Hammerspoon", "Alfred", "Raycast"]
+
+# Apps that participate in focus-follows-mouse but are excluded
+# from tiling (their windows keep whatever size/position they have).
+excluded_apps = ["Stickies"]
+
+[keybindings]
+# Set to false to disable all built-in keybindings (default: true)
+enabled = true
+
+# Modifier keys for directional focus (Cmd + arrow keys by default)
+[keybindings.focus_modifier]
+cmd = true
+
+# Modifier keys for directional window swap (Cmd+Shift + arrow keys by default)
+[keybindings.swap_modifier]
+cmd = true
+shift = true
+```
+
+### Keybindings
+
+When enabled, the daemon intercepts arrow key presses with the configured modifiers:
+
+| Binding | Action |
+|---------|--------|
+| focus_modifier + arrow | Move focus to the nearest window in that direction |
+| swap_modifier + arrow | Swap the focused window with its neighbor in that direction |
+
+Each modifier is a combination of `cmd`, `shift`, `ctrl`, and `option` (all `false` by default). The match is exact: only the specified modifiers must be held.
+
 ## How it works
 
 - **Mouse tracking**: A `CGEvent` tap listens for mouse movement events.

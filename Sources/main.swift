@@ -1,5 +1,6 @@
 import Cocoa
 import CoreGraphics
+import os
 
 // --- Argument parsing ---
 
@@ -19,16 +20,17 @@ excludedApps = Set(config.excludedApps)
 
 // --- Logging ---
 
-private let logFormatter = ISO8601DateFormatter()
+private let logger = Logger(subsystem: "com.hmblair.focus-follows-mouse", category: "general")
 
 func log(_ message: @autoclosure () -> String) {
     guard verbose else { return }
-    let ts = logFormatter.string(from: Date())
-    fputs("\(ts) \(message())\n", stderr)
+    let msg = message()
+    logger.debug("\(msg, privacy: .public)")
 }
 
 func warn(_ message: @autoclosure () -> String) {
-    fputs("warning: \(message())\n", stderr)
+    let msg = message()
+    logger.warning("\(msg, privacy: .public)")
 }
 
 // --- Time utilities ---
@@ -203,7 +205,7 @@ let mainRunLoop = CFRunLoopGetCurrent()!
 
 func installSignalHandlers() {
     let handler: @convention(c) (Int32) -> Void = { sig in
-        fputs("\nfocus-follows-mouse: received signal \(sig), shutting down\n", stderr)
+        logger.info("received signal \(sig, privacy: .public), shutting down")
         CFRunLoopStop(mainRunLoop)
     }
     signal(SIGINT, handler)
@@ -220,7 +222,7 @@ func handleEvent(
     proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?
 ) -> Unmanaged<CGEvent>? {
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-        warn("event tap re-enabled after system disable")
+        logger.warning("event tap re-enabled after system disable")
         if let tap = globalTap { CGEvent.tapEnable(tap: tap, enable: true) }
         return Unmanaged.passUnretained(event)
     }
@@ -257,15 +259,15 @@ func createEventTap(eventMask: CGEventMask, maxRetries: Int = 10, baseDelay: UIn
             callback: handleEvent, userInfo: nil
         ) {
             if attempt > 0 {
-                fputs("focus-follows-mouse: event tap created after \(attempt + 1) attempts\n", stderr)
+                logger.info("event tap created after \(attempt + 1, privacy: .public) attempts")
             }
             return tap
         }
         let delay = baseDelay * UInt32(1 << min(attempt, 4))
-        fputs("focus-follows-mouse: event tap failed (attempt \(attempt + 1)/\(maxRetries)), retrying in \(delay / 1_000_000)s...\n", stderr)
+        logger.warning("event tap failed (attempt \(attempt + 1, privacy: .public)/\(maxRetries, privacy: .public)), retrying...")
         usleep(delay)
     }
-    fputs("focus-follows-mouse: failed to create event tap after \(maxRetries) attempts. Grant accessibility permissions.\n", stderr)
+    logger.error("failed to create event tap after \(maxRetries, privacy: .public) attempts — grant accessibility permissions")
     exit(1)
 }
 
@@ -315,5 +317,6 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
 }
 CFRunLoopAddTimer(CFRunLoopGetCurrent(), pollTimer, .commonModes)
 
-fputs("focus-follows-mouse: running\(verbose ? " (verbose)" : "")\n", stderr)
+logger.info("running\(verbose ? " (verbose)" : "", privacy: .public)")
 CFRunLoopRun()
+logger.info("stopped")
