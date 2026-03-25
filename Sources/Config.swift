@@ -36,7 +36,7 @@ struct KeybindingsConfig: Codable {
 struct Config: Codable {
     var gap: CGFloat = 8
     var pollInterval: CFTimeInterval = 0.016
-    var ignoredApps: [String] = ["borders", "Hammerspoon", "Alfred", "Raycast"]
+    var ignoredApps: [String] = []
     var excludedApps: [String] = []
     var keybindings: KeybindingsConfig = KeybindingsConfig()
 

@@ -17,6 +17,15 @@ if CommandLine.arguments.contains("--version") {
     exit(0)
 }
 
+// --- Single instance guard ---
+
+let lockPath = "/tmp/focus-follows-mouse.lock"
+let lockFD = open(lockPath, O_CREAT | O_RDWR, 0o600)
+if lockFD < 0 || flock(lockFD, LOCK_EX | LOCK_NB) != 0 {
+    fputs("focus-follows-mouse: another instance is already running\n", stderr)
+    exit(1)
+}
+
 let verbose = CommandLine.arguments.contains("--verbose") || CommandLine.arguments.contains("-v")
 let tilingEnabled = !CommandLine.arguments.contains("--no-tile")
 let config = loadConfig()
@@ -27,21 +36,14 @@ excludedApps = Set(config.excludedApps)
 
 private let logger = Logger(subsystem: "com.hmblair.focus-follows-mouse", category: "general")
 
-func log(_ message: @autoclosure () -> String) {
-    guard verbose else { return }
-    let msg = message()
-    logger.debug("\(msg, privacy: .public)")
+private func emit(_ msg: String, level: OSLogType = .info) {
+    logger.log(level: level, "\(msg, privacy: .public)")
+    if verbose { fputs("\(msg)\n", stderr) }
 }
 
-func warn(_ message: @autoclosure () -> String) {
-    let msg = message()
-    logger.warning("\(msg, privacy: .public)")
-}
-
-func info(_ message: @autoclosure () -> String) {
-    let msg = message()
-    logger.info("\(msg, privacy: .public)")
-}
+func log(_ message: @autoclosure () -> String) { emit(message()) }
+func warn(_ message: @autoclosure () -> String) { emit(message(), level: .error) }
+func info(_ message: @autoclosure () -> String) { emit(message()) }
 
 // --- Time utilities ---
 
@@ -122,6 +124,7 @@ func handleMousePosition(_ pos: CGPoint, windows: [Window]) {
                 focusWindow(managed)
             }
         } else {
+            if win.name == "DockHelper" { return }
             if let app = NSRunningApplication(processIdentifier: win.pid) {
                 if !app.isActive {
                     log("mouse focus: \(win.id) (pid \(win.pid)) at \(Int(pos.x)),\(Int(pos.y))")

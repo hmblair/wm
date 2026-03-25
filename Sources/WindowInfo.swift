@@ -121,11 +121,14 @@ func dumpWindowInfo() -> DumpSnapshot {
     var manageableIDs: Set<UInt32> = []
 
     for entry in cgWindows {
-        guard !ignoredApps.contains(entry.name) else { continue }
         let win = Window(id: entry.id, pid: entry.pid, name: entry.name, frame: entry.frame)
         allWindows.append(win)
         layers[entry.id] = entry.layer
 
+        if ignoredApps.contains(entry.name) {
+            excludeReasons[entry.id] = "ignored app"
+            continue
+        }
         guard manageableLayers.contains(entry.layer) else { continue }
         if excludedApps.contains(entry.name) {
             excludeReasons[entry.id] = "excluded app"

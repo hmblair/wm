@@ -8,6 +8,7 @@ LAUNCHD_DIR = $(HOME)/Library/LaunchAgents
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "unknown")
 VERSION_FILE = Sources/Version.swift
 
+.DEFAULT_GOAL := build
 .PHONY: build install uninstall clean load unload start stop restart
 
 $(VERSION_FILE): .git/HEAD .git/index

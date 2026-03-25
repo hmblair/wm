@@ -71,7 +71,6 @@ func tileWindows(spaceID: CGSSpaceID) -> [UInt32: CGRect] {
         let treeIDs = Set(bspTrees[key]?.windowIDs ?? [])
 
         guard currentIDs != treeIDs else {
-            log("tile: no change for display \(key.displayID) space \(key.spaceID)")
             continue
         }
         changed = true
