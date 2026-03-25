@@ -11,6 +11,7 @@ struct WorldSnapshot {
     let mouseDown: Bool
     let commands: [PendingKeyCommand]
     let moveCommands: [Int]
+    let rotate: Bool
 }
 
 func readWorld() -> WorldSnapshot {
@@ -18,6 +19,8 @@ func readWorld() -> WorldSnapshot {
     pendingKeyCommands.removeAll()
     let moves = pendingMoveToSpace
     pendingMoveToSpace.removeAll()
+    let rotate = pendingRotate
+    pendingRotate = false
     let cgWindows = fetchCGWindowList()
     return WorldSnapshot(
         cgWindows: cgWindows,
@@ -26,7 +29,8 @@ func readWorld() -> WorldSnapshot {
         mousePosition: lastMousePosition,
         mouseDown: NSEvent.pressedMouseButtons & 0x1 != 0,
         commands: commands,
-        moveCommands: moves
+        moveCommands: moves,
+        rotate: rotate
     )
 }
 
@@ -72,6 +76,19 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
             } else {
                 computeFocus(managed: managed, direction: cmd.direction, plan: &plan)
             }
+        }
+    }
+
+    // 3b. Process rotate command
+    if snap.rotate, tilingEnabled, let focused = snap.focusedWindow,
+       let managed = resolveManaged(for: focused, in: plan.reconciledWindows) {
+        let focusCenter = CGPoint(x: managed.frame.midX, y: managed.frame.midY)
+        let did = displayID(for: focusCenter)
+        let key = DisplaySpaceKey(displayID: did, spaceID: snap.spaceID)
+        if let tree = plan.updatedTrees[key],
+           let rotated = tree.rotatingParent(of: managed.id) {
+            log("rotate: toggling split orientation for parent of \(managed.id) (\(managed.name))")
+            plan.updatedTrees[key] = rotated
         }
     }
 

@@ -59,6 +59,7 @@ struct PendingKeyCommand {
 
 var pendingKeyCommands: [PendingKeyCommand] = []
 var pendingMoveToSpace: [Int] = []
+var pendingRotate = false
 var lastMousePosition: CGPoint = {
     let nsPos = NSEvent.mouseLocation
     let screenHeight = NSScreen.screens.first?.frame.height ?? 0
@@ -159,6 +160,10 @@ func handleEvent(
                 pendingKeyCommands.append(PendingKeyCommand(direction: direction, swap: false))
                 return nil
             }
+        }
+        if keyCode == 15 && config.keybindings.swapModifier.matches(flags) { // R key
+            pendingRotate = true
+            return nil
         }
         if let spaceIndex = spaceIndexFromKeyCode(keyCode),
            config.keybindings.moveToSpaceModifier.matches(flags) {

@@ -107,6 +107,35 @@ indirect enum BSPTree {
         return nil
     }
 
+    private var flipped: BSPTree {
+        switch self {
+        case .leaf: return self
+        case .split(let l, let r, let v, let ratio):
+            return .split(left: l.flipped, right: r.flipped, vertical: !v, ratio: ratio)
+        }
+    }
+
+    func rotatingParent(of windowID: UInt32) -> BSPTree? {
+        guard case .split(let left, let right, let vertical, let ratio) = self else { return nil }
+
+        let leftContains = left.contains(id: windowID)
+        let rightContains = right.contains(id: windowID)
+        guard leftContains || rightContains else { return nil }
+
+        let child = leftContains ? left : right
+        if case .leaf = child {
+            return .split(left: left.flipped, right: right.flipped, vertical: !vertical, ratio: ratio)
+        }
+
+        if leftContains, let newLeft = left.rotatingParent(of: windowID) {
+            return .split(left: newLeft, right: right, vertical: vertical, ratio: ratio)
+        }
+        if rightContains, let newRight = right.rotatingParent(of: windowID) {
+            return .split(left: left, right: newRight, vertical: vertical, ratio: ratio)
+        }
+        return nil
+    }
+
 }
 
 func buildBSPTree(windowIDs: [UInt32], splitVertical: Bool) -> BSPTree? {
@@ -127,16 +156,27 @@ func buildBSPTree(windowIDs: [UInt32], splitVertical: Bool) -> BSPTree? {
 /// splits vertically (1) or horizontally (0).
 private func buildTemplate(count: Int, splitMask: UInt32) -> BSPTree {
     var nextBit = 0
-    func build(_ n: Int) -> BSPTree {
-        if n == 1 { return .leaf(id: 0) } // placeholder
+    func build(_ n: Int, parentVertical: Bool?) -> BSPTree {
+        if n == 1 { return .leaf(id: 0) }
         let bit = nextBit
         nextBit += 1
         let vertical = (splitMask >> bit) & 1 == 1
         let leftCount = (n + 1) / 2
         let rightCount = n - leftCount
-        return .split(left: build(leftCount), right: build(rightCount), vertical: vertical)
+        return .split(left: build(leftCount, parentVertical: vertical),
+                      right: build(rightCount, parentVertical: vertical),
+                      vertical: vertical)
     }
-    return build(count)
+    return build(count, parentVertical: nil)
+}
+
+private func alternates(_ tree: BSPTree, parentVertical: Bool? = nil) -> Bool {
+    switch tree {
+    case .leaf: return true
+    case .split(let l, let r, let v, _):
+        if let pv = parentVertical, pv == v { return false }
+        return alternates(l, parentVertical: v) && alternates(r, parentVertical: v)
+    }
 }
 
 /// Replace placeholder leaf IDs (in tree-order) with the given window IDs.
@@ -207,6 +247,7 @@ func buildBSPTreeFitting(windows: [ManagedWindow], rect: CGRect, gap: CGFloat) -
 
     for mask in 0..<UInt32(configCount) {
         let template = buildTemplate(count: n, splitMask: mask)
+        guard alternates(template) else { continue }
         let tileFrames = template.computeFrames(rect: rect, gap: gap).map { $0.1 }
         let (assignment, cost) = greedyMatch(tileFrames: tileFrames, windowFrames: windowFrames)
         if cost < bestCost {
