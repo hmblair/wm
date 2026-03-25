@@ -203,14 +203,20 @@ CGEvent.tapEnable(tap: tap, enable: true)
 
 // --- Main loop (read → compute → execute) ---
 
-let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
-    CFAbsoluteTimeGetCurrent(), config.pollInterval, 0, 0) { _ in
+func tick() {
     let snap = readWorld()
     let plan = computePlan(snap)
     executePlan(plan, snap: snap)
 }
+
+let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
+    CFAbsoluteTimeGetCurrent(), config.pollInterval, 0, 0) { _ in
+    tick()
+}
 CFRunLoopAddTimer(CFRunLoopGetCurrent(), pollTimer, .commonModes)
 
+// Trigger an immediate tick on space change so returning to a space
+// that lost a window re-tiles without waiting for the next poll.
 log("running\(verbose ? " (verbose)" : "")")
 CFRunLoopRun()
 log("stopped")
