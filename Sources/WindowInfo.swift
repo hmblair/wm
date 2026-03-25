@@ -15,8 +15,6 @@ func formatFrame(_ f: CGRect) -> String {
     return "\(Int(f.origin.x)),\(Int(f.origin.y)) \(Int(f.width))x\(Int(f.height))"
 }
 
-var ignoredApps: Set<String> = []
-var excludedApps: Set<String> = []
 let manageableLayers: Set<Int> = [0, 1000]
 
 struct CGWindowEntry {
@@ -57,16 +55,10 @@ class TickState {
     lazy var cgWindows: [CGWindowEntry] = fetchCGWindowList()
 
     lazy var windows: [Window] = self.cgWindows
-        .filter { !ignoredApps.contains($0.name) }
+        .filter { !config.ignoredApps.contains($0.name) }
         .map { Window(id: $0.id, pid: $0.pid, name: $0.name, frame: $0.frame) }
 
-    private var _focusedWindow: Window?? = nil
-    var focusedWindow: Window? {
-        if let cached = _focusedWindow { return cached }
-        let value = getFocusedWindow(cgWindows: self.cgWindows)
-        _focusedWindow = .some(value)
-        return value
-    }
+    lazy var focusedWindow: Window? = getFocusedWindow(cgWindows: self.cgWindows)
 }
 
 func getFocusedWindow(cgWindows: [CGWindowEntry]) -> Window? {
@@ -103,6 +95,45 @@ func findAXWindowByPidAndID(pid: Int32, windowID: UInt32) -> AXUIElement? {
     return nil
 }
 
+enum WindowExcludeReason: CustomStringConvertible {
+    case ignoredApp, excludedApp, noAXHandle, subrole(String), fullScreen
+
+    var description: String {
+        switch self {
+        case .ignoredApp: return "ignored app"
+        case .excludedApp: return "excluded app"
+        case .noAXHandle: return "no AX handle"
+        case .subrole(let s): return "subrole: \(s)"
+        case .fullScreen: return "full screen"
+        }
+    }
+}
+
+func checkWindowEligibility(entry: CGWindowEntry) -> (AXUIElement?, WindowExcludeReason?) {
+    if config.ignoredApps.contains(entry.name) { return (nil, .ignoredApp) }
+    guard manageableLayers.contains(entry.layer) else { return (nil, nil) }
+    if config.excludedApps.contains(entry.name) { return (nil, .excludedApp) }
+
+    guard let axWindow = findAXWindowByPidAndID(pid: entry.pid, windowID: entry.id) else {
+        return (nil, .noAXHandle)
+    }
+
+    var subroleRef: CFTypeRef?
+    AXUIElementCopyAttributeValue(axWindow, kAXSubroleAttribute as CFString, &subroleRef)
+    let subrole = subroleRef as? String ?? "nil"
+    guard subrole == kAXStandardWindowSubrole as String else {
+        return (axWindow, .subrole(subrole))
+    }
+
+    var fullScreenRef: CFTypeRef?
+    if AXUIElementCopyAttributeValue(axWindow, "AXFullScreen" as CFString, &fullScreenRef) == .success,
+       let isFullScreen = fullScreenRef as? Bool, isFullScreen {
+        return (axWindow, .fullScreen)
+    }
+
+    return (axWindow, nil)
+}
+
 // Eager snapshot used only by --dump
 struct DumpSnapshot {
     let windows: [Window]
@@ -121,38 +152,22 @@ func dumpWindowInfo() -> DumpSnapshot {
     var manageableIDs: Set<UInt32> = []
 
     for entry in cgWindows {
-        let win = Window(id: entry.id, pid: entry.pid, name: entry.name, frame: entry.frame)
-        allWindows.append(win)
+        allWindows.append(Window(id: entry.id, pid: entry.pid, name: entry.name, frame: entry.frame))
         layers[entry.id] = entry.layer
 
-        if ignoredApps.contains(entry.name) {
-            excludeReasons[entry.id] = "ignored app"
-            continue
+        let (axWindow, reason) = checkWindowEligibility(entry: entry)
+
+        if let axWindow = axWindow {
+            var subroleRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(axWindow, kAXSubroleAttribute as CFString, &subroleRef)
+            if let s = subroleRef as? String { subroles[entry.id] = s }
         }
-        guard manageableLayers.contains(entry.layer) else { continue }
-        if excludedApps.contains(entry.name) {
-            excludeReasons[entry.id] = "excluded app"
-            continue
+
+        if let reason = reason {
+            excludeReasons[entry.id] = reason.description
+        } else if axWindow != nil {
+            manageableIDs.insert(entry.id)
         }
-        guard let axWindow = findAXWindowByPidAndID(pid: entry.pid, windowID: entry.id) else {
-            excludeReasons[entry.id] = "no AX handle"
-            continue
-        }
-        var subroleRef: CFTypeRef?
-        AXUIElementCopyAttributeValue(axWindow, kAXSubroleAttribute as CFString, &subroleRef)
-        let subrole = subroleRef as? String ?? "nil"
-        subroles[entry.id] = subrole
-        guard subrole == kAXStandardWindowSubrole as String else {
-            excludeReasons[entry.id] = "subrole: \(subrole)"
-            continue
-        }
-        var fullScreenRef: CFTypeRef?
-        if AXUIElementCopyAttributeValue(axWindow, "AXFullScreen" as CFString, &fullScreenRef) == .success,
-           let isFullScreen = fullScreenRef as? Bool, isFullScreen {
-            excludeReasons[entry.id] = "full screen"
-            continue
-        }
-        manageableIDs.insert(entry.id)
     }
 
     return DumpSnapshot(windows: allWindows, layers: layers, subroles: subroles,

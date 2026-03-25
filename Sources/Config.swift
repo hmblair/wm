@@ -36,8 +36,8 @@ struct KeybindingsConfig: Codable {
 struct Config: Codable {
     var gap: CGFloat = 8
     var pollInterval: CFTimeInterval = 0.016
-    var ignoredApps: [String] = []
-    var excludedApps: [String] = []
+    var ignoredApps: Set<String> = []
+    var excludedApps: Set<String> = []
     var keybindings: KeybindingsConfig = KeybindingsConfig()
 
     static let defaultPath: String = {
@@ -58,10 +58,10 @@ struct Config: Codable {
             pollInterval = v
         }
         if let v = try? container.decode([String].self, forKey: .ignoredApps) {
-            ignoredApps = v
+            ignoredApps = Set(v)
         }
         if let v = try? container.decode([String].self, forKey: .excludedApps) {
-            excludedApps = v
+            excludedApps = Set(v)
         }
         if let v = try? container.decode(KeybindingsConfig.self, forKey: .keybindings) {
             keybindings = v

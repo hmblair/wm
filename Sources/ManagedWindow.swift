@@ -35,26 +35,15 @@ func reconcileWindows(cgWindows: [CGWindowEntry]) {
     }
 
     for entry in cgWindows {
-        guard !ignoredApps.contains(entry.name) else { continue }
+        if config.ignoredApps.contains(entry.name) { continue }
 
         if let existing = managedWindows[entry.id] {
             existing.frame = entry.frame
             continue
         }
 
-        guard manageableLayers.contains(entry.layer) else { continue }
-        guard !excludedApps.contains(entry.name) else { continue }
-
-        guard let axWindow = findAXWindowByPidAndID(pid: entry.pid, windowID: entry.id) else { continue }
-
-        var subroleRef: CFTypeRef?
-        AXUIElementCopyAttributeValue(axWindow, kAXSubroleAttribute as CFString, &subroleRef)
-        let subrole = subroleRef as? String ?? "nil"
-        guard subrole == kAXStandardWindowSubrole as String else { continue }
-
-        var fullScreenRef: CFTypeRef?
-        if AXUIElementCopyAttributeValue(axWindow, "AXFullScreen" as CFString, &fullScreenRef) == .success,
-           let isFullScreen = fullScreenRef as? Bool, isFullScreen { continue }
+        let (axWindow, reason) = checkWindowEligibility(entry: entry)
+        guard reason == nil, let axWindow = axWindow else { continue }
 
         let win = ManagedWindow(id: entry.id, pid: entry.pid, name: entry.name,
                                 axWindow: axWindow, frame: entry.frame)

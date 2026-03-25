@@ -29,8 +29,6 @@ if lockFD < 0 || flock(lockFD, LOCK_EX | LOCK_NB) != 0 {
 let verbose = CommandLine.arguments.contains("--verbose") || CommandLine.arguments.contains("-v")
 let tilingEnabled = !CommandLine.arguments.contains("--no-tile")
 let config = loadConfig()
-ignoredApps = Set(config.ignoredApps)
-excludedApps = Set(config.excludedApps)
 
 // --- Logging ---
 
@@ -43,7 +41,6 @@ private func emit(_ msg: String, level: OSLogType = .info) {
 
 func log(_ message: @autoclosure () -> String) { emit(message()) }
 func warn(_ message: @autoclosure () -> String) { emit(message(), level: .error) }
-func info(_ message: @autoclosure () -> String) { emit(message()) }
 
 // --- Time utilities ---
 
@@ -218,7 +215,7 @@ let mainRunLoop = CFRunLoopGetCurrent()!
 
 func installSignalHandlers() {
     let handler: @convention(c) (Int32) -> Void = { sig in
-        info("received signal \(sig), shutting down")
+        log("received signal \(sig), shutting down")
         CFRunLoopStop(mainRunLoop)
     }
     signal(SIGINT, handler)
@@ -272,7 +269,7 @@ func createEventTap(eventMask: CGEventMask, maxRetries: Int = 10, baseDelay: UIn
             callback: handleEvent, userInfo: nil
         ) {
             if attempt > 0 {
-                info("event tap created after \(attempt + 1) attempts")
+                log("event tap created after \(attempt + 1) attempts")
             }
             return tap
         }
@@ -330,6 +327,6 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
 }
 CFRunLoopAddTimer(CFRunLoopGetCurrent(), pollTimer, .commonModes)
 
-info("running\(verbose ? " (verbose)" : "")")
+log("running\(verbose ? " (verbose)" : "")")
 CFRunLoopRun()
-info("stopped")
+log("stopped")

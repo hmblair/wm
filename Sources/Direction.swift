@@ -2,12 +2,17 @@ import CoreGraphics
 
 enum Direction { case left, right, up, down }
 
+private let kVK_LeftArrow: UInt16 = 123
+private let kVK_RightArrow: UInt16 = 124
+private let kVK_DownArrow: UInt16 = 125
+private let kVK_UpArrow: UInt16 = 126
+
 func directionFromKeyCode(_ keyCode: UInt16) -> Direction? {
     switch keyCode {
-    case 123: return .left
-    case 124: return .right
-    case 125: return .down
-    case 126: return .up
+    case kVK_LeftArrow:  return .left
+    case kVK_RightArrow: return .right
+    case kVK_DownArrow:  return .down
+    case kVK_UpArrow:    return .up
     default: return nil
     }
 }
