@@ -127,39 +127,3 @@ func checkWindowEligibility(entry: CGWindowEntry) -> EligibilityResult {
 
     return EligibilityResult(axWindow: axWindow, subrole: subrole, reason: nil)
 }
-
-// Eager snapshot used only by --dump
-struct DumpSnapshot {
-    let windows: [Window]
-    let layers: [UInt32: Int]
-    let subroles: [UInt32: String]
-    let excludeReasons: [UInt32: String]
-    let manageableIDs: Set<UInt32>
-}
-
-func dumpWindowInfo() -> DumpSnapshot {
-    let cgWindows = fetchCGWindowList()
-    var allWindows: [Window] = []
-    var layers: [UInt32: Int] = [:]
-    var subroles: [UInt32: String] = [:]
-    var excludeReasons: [UInt32: String] = [:]
-    var manageableIDs: Set<UInt32> = []
-
-    for entry in cgWindows {
-        allWindows.append(Window(id: entry.id, pid: entry.pid, name: entry.name, frame: entry.frame))
-        layers[entry.id] = entry.layer
-
-        let result = checkWindowEligibility(entry: entry)
-
-        if let s = result.subrole { subroles[entry.id] = s }
-
-        if let reason = result.reason {
-            excludeReasons[entry.id] = reason.description
-        } else if result.axWindow != nil {
-            manageableIDs.insert(entry.id)
-        }
-    }
-
-    return DumpSnapshot(windows: allWindows, layers: layers, subroles: subroles,
-                        excludeReasons: excludeReasons, manageableIDs: manageableIDs)
-}
