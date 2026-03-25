@@ -1,5 +1,5 @@
-import Foundation
-import CoreGraphics
+import Cocoa
+import ApplicationServices
 
 typealias CGSConnectionID = Int32
 typealias CGSSpaceID = UInt64
@@ -29,9 +29,66 @@ func activeSpaceID() -> CGSSpaceID {
     return _SLSGetActiveSpace(slsConnectionID)
 }
 
+private let _SLSCopyManagedDisplaySpaces: @convention(c) (CGSConnectionID) -> CFArray? = {
+    unsafeBitCast(dlsym(skylight, "SLSCopyManagedDisplaySpaces")!, to: (@convention(c) (CGSConnectionID) -> CFArray?).self)
+}()
+
+private let _SLSMoveWindowsToManagedSpace: @convention(c) (CGSConnectionID, CFArray, CGSSpaceID) -> Void = {
+    unsafeBitCast(dlsym(skylight, "SLSMoveWindowsToManagedSpace")!, to: (@convention(c) (CGSConnectionID, CFArray, CGSSpaceID) -> Void).self)
+}()
+
 func spaceForWindow(_ windowID: UInt32) -> CGSSpaceID? {
     let maskAll: UInt32 = 0x7
     guard let spaces = _SLSCopySpacesForWindows(slsConnectionID, maskAll, [windowID] as CFArray) as? [CGSSpaceID],
           let first = spaces.first else { return nil }
     return first
+}
+
+func orderedSpaceIDs() -> [CGSSpaceID] {
+    guard let displays = _SLSCopyManagedDisplaySpaces(slsConnectionID) as? [[String: Any]] else { return [] }
+    var result: [CGSSpaceID] = []
+    for display in displays {
+        guard let spaces = display["Spaces"] as? [[String: Any]] else { continue }
+        for space in spaces {
+            guard let type = space["type"] as? Int, type == 0 else { continue }
+            if let id = space["id64"] as? CGSSpaceID {
+                result.append(id)
+            }
+        }
+    }
+    return result
+}
+
+private func spaceIndexKeyCode(_ index: Int) -> UInt16 {
+    let codes: [UInt16] = [18, 19, 20, 21, 23, 22, 26, 28, 25]
+    return codes[min(index, codes.count - 1)]
+}
+
+func moveWindowToSpace(axWindow: AXUIElement, spaceIndex: Int) {
+    var posRef: CFTypeRef?
+    AXUIElementCopyAttributeValue(axWindow, kAXPositionAttribute as CFString, &posRef)
+    var pos = CGPoint.zero
+    if let pr = posRef { AXValueGetValue(pr as! AXValue, .cgPoint, &pos) }
+
+    var sizeRef: CFTypeRef?
+    AXUIElementCopyAttributeValue(axWindow, kAXSizeAttribute as CFString, &sizeRef)
+    var size = CGSize.zero
+    if let sr = sizeRef { AXValueGetValue(sr as! AXValue, .cgSize, &size) }
+
+    let titleBar = CGPoint(x: pos.x + size.width / 2, y: pos.y + 15)
+    let source = CGEventSource(stateID: .hidSystemState)
+
+    CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: titleBar, mouseButton: .left)!
+        .post(tap: .cghidEventTap)
+
+    let keyCode = spaceIndexKeyCode(spaceIndex)
+    let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)!
+    keyDown.flags = .maskControl
+    let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)!
+    keyUp.flags = .maskControl
+    keyDown.post(tap: .cghidEventTap)
+    keyUp.post(tap: .cghidEventTap)
+
+    CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: titleBar, mouseButton: .left)!
+        .post(tap: .cghidEventTap)
 }

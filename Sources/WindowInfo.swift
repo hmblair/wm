@@ -49,17 +49,6 @@ func fetchCGWindowList() -> [CGWindowEntry] {
     return entries
 }
 
-class TickState {
-    lazy var spaceID: CGSSpaceID = activeSpaceID()
-
-    lazy var cgWindows: [CGWindowEntry] = fetchCGWindowList()
-
-    lazy var windows: [Window] = self.cgWindows
-        .filter { !config.ignoredApps.contains($0.name) }
-        .map { Window(id: $0.id, pid: $0.pid, name: $0.name, frame: $0.frame) }
-
-    lazy var focusedWindow: Window? = getFocusedWindow(cgWindows: self.cgWindows)
-}
 
 func getFocusedWindow(cgWindows: [CGWindowEntry]) -> Window? {
     guard let frontApp = NSWorkspace.shared.frontmostApplication else { return nil }

@@ -42,19 +42,15 @@ private func emit(_ msg: String, level: OSLogType = .info) {
 func log(_ message: @autoclosure () -> String) { emit(message()) }
 func warn(_ message: @autoclosure () -> String) { emit(message(), level: .error) }
 
-// --- Time utilities ---
+// --- Global state (mutated only in executePlan) ---
 
-private let machTimebaseInfo: mach_timebase_info_data_t = {
-    var info = mach_timebase_info_data_t()
-    mach_timebase_info(&info)
-    return info
-}()
+var managedWindows: [UInt32: ManagedWindow] = [:]
+var bspTrees: [DisplaySpaceKey: BSPTree] = [:]
+var lastActiveSpace: CGSSpaceID = 0
+var lastFocusedWindow: UInt32 = 0
+var pendingWarpToWindow: UInt32 = 0
 
-func elapsedNsSince(_ timestamp: UInt64) -> UInt64 {
-    return (mach_absolute_time() - timestamp) * UInt64(machTimebaseInfo.numer) / UInt64(machTimebaseInfo.denom)
-}
-
-// --- Pending input state (written by event tap, consumed by poll loop) ---
+// --- Pending input state (written by event tap, consumed by readWorld) ---
 
 struct PendingKeyCommand {
     let direction: Direction
@@ -62,104 +58,12 @@ struct PendingKeyCommand {
 }
 
 var pendingKeyCommands: [PendingKeyCommand] = []
+var pendingMoveToSpace: [Int] = []
 var lastMousePosition: CGPoint = {
     let nsPos = NSEvent.mouseLocation
     let screenHeight = NSScreen.screens.first?.frame.height ?? 0
     return CGPoint(x: nsPos.x, y: screenHeight - nsPos.y)
 }()
-
-// --- Focus/navigation handlers ---
-
-func handleFocusDirection(_ direction: Direction, focused: Window, spaceID: CGSSpaceID) {
-    guard let managed = resolveManaged(for: focused) else { return }
-    let candidates = managedWindows.values.filter { $0.id != managed.id }
-    guard let target = nearestWindow(from: managed.frame, direction: direction, among: Array(candidates)) else { return }
-    log("cmd+arrow focus: \(target.id) (\(target.name))")
-    focusWindow(target)
-    warpMouse(to: target.frame)
-}
-
-func handleSwapDirection(_ direction: Direction, focused: Window, spaceID: CGSSpaceID) -> [UInt32: CGRect]? {
-    guard tilingEnabled else { return nil }
-    guard let managed = resolveManaged(for: focused) else { return nil }
-
-    let focusCenter = CGPoint(x: managed.frame.midX, y: managed.frame.midY)
-    let did = displayID(for: focusCenter)
-    let key = DisplaySpaceKey(displayID: did, spaceID: spaceID)
-    guard let tree = bspTrees[key] else { return nil }
-    guard let result = tree.findCrossingSplit(windowID: managed.id, direction: direction) else { return nil }
-
-    if result.focusedIsAlone {
-        log("cmd+shift+arrow partition swap for \(managed.id)")
-        bspTrees[key] = tree.swappingChildrenForCrossing(windowID: managed.id, direction: direction) ?? tree
-    } else {
-        let otherWindows = result.otherSideIDs.compactMap { managedWindows[$0] }
-        guard let target = nearestWindow(from: managed.frame, direction: direction, among: otherWindows) else { return nil }
-        log("cmd+shift+arrow window swap: \(managed.id) <-> \(target.id)")
-        bspTrees[key] = tree.swappingWindows(managed.id, target.id)
-    }
-
-    let tileFrames = computeTileFrames(spaceID: spaceID)
-    enforceTileFrames(tileFrames)
-    warpMouse(to: managed.frame)
-    return tileFrames
-}
-
-// --- Mouse/focus tracking ---
-
-var lastFocusedWindow: UInt32 = 0
-var lastSelfFocusTime: UInt64 = 0
-private let selfFocusCooldownNs: UInt64 = 150_000_000
-
-func handleMousePosition(_ pos: CGPoint, windows: [Window]) {
-    for win in windows {
-        guard win.frame.contains(pos) else { continue }
-
-        if let managed = managedWindows[win.id] {
-            if managed.id != lastFocusedWindow {
-                log("mouse focus: \(managed.id) (\(managed.name)) at \(Int(pos.x)),\(Int(pos.y))")
-                focusWindow(managed)
-            }
-        } else {
-            if win.name == "DockHelper" { return }
-            if let app = NSRunningApplication(processIdentifier: win.pid) {
-                if !app.isActive {
-                    log("mouse focus: \(win.id) (pid \(win.pid)) at \(Int(pos.x)),\(Int(pos.y))")
-                    app.activate()
-                }
-                lastFocusedWindow = 0
-            }
-        }
-        return
-    }
-
-    if lastFocusedWindow != 0 {
-        log("mouse over desktop — unfocusing")
-        lastFocusedWindow = 0
-        if let finder = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.finder" }) {
-            finder.activate()
-        }
-    }
-}
-
-func checkExternalFocusChange(focused: Window) {
-    guard focused.id != lastFocusedWindow else { return }
-    guard lastFocusedWindow != 0 else {
-        lastFocusedWindow = focused.id
-        return
-    }
-
-    if elapsedNsSince(lastSelfFocusTime) < selfFocusCooldownNs {
-        log("external focus change to \(focused.id), but within cooldown — updating state only")
-        lastFocusedWindow = focused.id
-        return
-    }
-
-    log("external focus change: warp to \(focused.id) (\(focused.name))")
-    lastFocusedWindow = focused.id
-    let frame = managedWindows[focused.id]?.frame ?? focused.frame
-    warpMouse(to: frame)
-}
 
 // --- Debug dump ---
 
@@ -181,8 +85,13 @@ if CommandLine.arguments.contains("--dump") {
     }
 
     let dump = dumpWindowInfo()
-    reconcileWindows(cgWindows: fetchCGWindowList())
-    let tileFrames = tilingEnabled ? tileWindows(spaceID: spaceID) : [:]
+    let cgWindows = fetchCGWindowList()
+    let reconciled = computeReconciliation(current: [:], cgWindows: cgWindows)
+    let trees = computeBSPTrees(managedWindows: reconciled, currentTrees: [:],
+                                spaceID: spaceID, lastActiveSpace: 0)
+    let tileFrames = tilingEnabled
+        ? computeTileFrames(trees: trees, managedWindows: reconciled, spaceID: spaceID)
+        : [:]
 
     print("\nAll on-screen windows (z-order):")
     for win in dump.windows {
@@ -251,6 +160,11 @@ func handleEvent(
                 return nil
             }
         }
+        if let spaceIndex = spaceIndexFromKeyCode(keyCode),
+           config.keybindings.moveToSpaceModifier.matches(flags) {
+            pendingMoveToSpace.append(spaceIndex)
+            return nil
+        }
     }
 
     return Unmanaged.passUnretained(event)
@@ -287,46 +201,13 @@ let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
 CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
 CGEvent.tapEnable(tap: tap, enable: true)
 
-// --- Main loop ---
+// --- Main loop (read → compute → execute) ---
 
 let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     CFAbsoluteTimeGetCurrent(), config.pollInterval, 0, 0) { _ in
-    let tick = TickState()
-
-    // 1. Reconcile managed windows with reality (AX lookups only for new windows)
-    reconcileWindows(cgWindows: tick.cgWindows)
-
-    // 2. Compute tile layout (rebuilds BSP if window set changed)
-    var tileFrames = tileWindows(spaceID: tick.spaceID)
-
-    // 3. Process queued key commands (accesses tick.focusedWindow only if commands pending)
-    let commands = pendingKeyCommands
-    pendingKeyCommands.removeAll()
-    if !commands.isEmpty, let focused = tick.focusedWindow {
-        for cmd in commands {
-            if cmd.swap {
-                if let newFrames = handleSwapDirection(cmd.direction, focused: focused, spaceID: tick.spaceID) {
-                    tileFrames = newFrames
-                }
-            } else {
-                handleFocusDirection(cmd.direction, focused: focused, spaceID: tick.spaceID)
-            }
-        }
-    }
-
-    // 4. Enforce tile positions
-    enforceTileFrames(tileFrames)
-
-    // 5. Focus-follows-mouse (skip briefly after warp — AX moves are async so
-    //    CG frames may not yet reflect the new window positions)
-    if !mouseWarpedRecently() {
-        handleMousePosition(lastMousePosition, windows: tick.windows)
-    }
-
-    // 6. External focus tracking
-    if let focused = tick.focusedWindow {
-        checkExternalFocusChange(focused: focused)
-    }
+    let snap = readWorld()
+    let plan = computePlan(snap)
+    executePlan(plan, snap: snap)
 }
 CFRunLoopAddTimer(CFRunLoopGetCurrent(), pollTimer, .commonModes)
 

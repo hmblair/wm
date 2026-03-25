@@ -8,8 +8,6 @@ func focusWindow(_ win: ManagedWindow) {
 
     AXUIElementPerformAction(win.axWindow, kAXRaiseAction as CFString)
     AXUIElementSetAttributeValue(win.axWindow, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-    lastFocusedWindow = win.id
-    lastSelfFocusTime = mach_absolute_time()
 }
 
 func setWindowFrame(_ win: ManagedWindow, frame: CGRect) {
@@ -28,7 +26,6 @@ func setWindowFrame(_ win: ManagedWindow, frame: CGRect) {
         }
     }
 
-    // Read back actual size — app may enforce a maximum
     var actualSizeRef: CFTypeRef?
     if AXUIElementCopyAttributeValue(win.axWindow, kAXSizeAttribute as CFString, &actualSizeRef) == .success,
        let sRef = actualSizeRef {
@@ -44,17 +41,8 @@ func setWindowFrame(_ win: ManagedWindow, frame: CGRect) {
     win.frame = frame
 }
 
-var lastMouseWarpTime: UInt64 = 0
-private let mouseWarpCooldownNs: UInt64 = 150_000_000
-
-func mouseWarpedRecently() -> Bool {
-    return elapsedNsSince(lastMouseWarpTime) < mouseWarpCooldownNs
-}
-
 func warpMouse(to frame: CGRect) {
     let center = CGPoint(x: frame.midX, y: frame.midY)
     log("warp mouse to \(Int(center.x)),\(Int(center.y))")
     CGWarpMouseCursorPosition(center)
-    lastMousePosition = center
-    lastMouseWarpTime = mach_absolute_time()
 }

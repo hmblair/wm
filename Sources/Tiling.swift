@@ -8,9 +8,6 @@ struct DisplaySpaceKey: Hashable {
     let spaceID: CGSSpaceID
 }
 
-var bspTrees: [DisplaySpaceKey: BSPTree] = [:]
-var lastActiveSpace: CGSSpaceID = 0
-
 func framesMatch(_ a: CGRect, _ b: CGRect) -> Bool {
     return abs(a.origin.x - b.origin.x) <= frameTolerance
         && abs(a.origin.y - b.origin.y) <= frameTolerance
@@ -18,12 +15,16 @@ func framesMatch(_ a: CGRect, _ b: CGRect) -> Bool {
         && abs(a.height - b.height) <= frameTolerance
 }
 
-// MARK: - Tile computation (pure — no AX calls)
+// MARK: - Tile computation (pure)
 
-func computeTileFrames(spaceID: CGSSpaceID) -> [UInt32: CGRect] {
+func computeTileFrames(
+    trees: [DisplaySpaceKey: BSPTree],
+    managedWindows: [UInt32: ManagedWindow],
+    spaceID: CGSSpaceID
+) -> [UInt32: CGRect] {
     var tileFrames: [UInt32: CGRect] = [:]
 
-    for (key, tree) in bspTrees where key.spaceID == spaceID {
+    for (key, tree) in trees where key.spaceID == spaceID {
         guard let screen = screenForDisplayID(key.displayID) else { continue }
         let rect = visibleFrame(for: screen)
         for (id, tileRect) in tree.computeFrames(rect: rect, gap: config.gap) {
@@ -42,15 +43,19 @@ func computeTileFrames(spaceID: CGSSpaceID) -> [UInt32: CGRect] {
     return tileFrames
 }
 
-// MARK: - BSP tree management
+// MARK: - BSP tree management (pure)
 
-func tileWindows(spaceID: CGSSpaceID) -> [UInt32: CGRect] {
-    guard tilingEnabled else { return [:] }
+func computeBSPTrees(
+    managedWindows: [UInt32: ManagedWindow],
+    currentTrees: [DisplaySpaceKey: BSPTree],
+    spaceID: CGSSpaceID,
+    lastActiveSpace: CGSSpaceID
+) -> [DisplaySpaceKey: BSPTree] {
+    var trees = currentTrees
 
     let spaceChanged = spaceID != lastActiveSpace
     if spaceChanged {
         log("space changed: \(lastActiveSpace) -> \(spaceID)")
-        lastActiveSpace = spaceID
     }
 
     var windowsByDisplay: [CGDirectDisplayID: [ManagedWindow]] = [:]
@@ -61,27 +66,25 @@ func tileWindows(spaceID: CGSSpaceID) -> [UInt32: CGRect] {
     }
 
     let currentSpaceKeys = Set(windowsByDisplay.keys.map { DisplaySpaceKey(displayID: $0, spaceID: spaceID) })
-    let existingKeysForSpace = Set(bspTrees.keys.filter { $0.spaceID == spaceID })
+    let existingKeysForSpace = Set(trees.keys.filter { $0.spaceID == spaceID })
     let allKeys = currentSpaceKeys.union(existingKeysForSpace)
     var changed = spaceChanged
 
     for key in allKeys {
         let screenWindows = windowsByDisplay[key.displayID] ?? []
         let currentIDs = Set(screenWindows.map { $0.id })
-        let treeIDs = Set(bspTrees[key]?.windowIDs ?? [])
+        let treeIDs = Set(trees[key]?.windowIDs ?? [])
 
-        guard currentIDs != treeIDs else {
-            continue
-        }
+        guard currentIDs != treeIDs else { continue }
         changed = true
 
         if screenWindows.isEmpty {
-            bspTrees.removeValue(forKey: key)
+            trees.removeValue(forKey: key)
             continue
         }
 
         var orderedIDs: [UInt32] = []
-        if let existingTree = bspTrees[key] {
+        if let existingTree = trees[key] {
             orderedIDs = existingTree.windowIDs.filter { currentIDs.contains($0) }
         }
         for win in screenWindows where !orderedIDs.contains(win.id) {
@@ -89,29 +92,12 @@ func tileWindows(spaceID: CGSSpaceID) -> [UInt32: CGRect] {
         }
 
         log("tile: rebuilding BSP for display \(key.displayID) space \(key.spaceID) — \(orderedIDs.count) windows: \(orderedIDs)")
-        bspTrees[key] = buildBSPTree(windowIDs: orderedIDs, splitVertical: true)
+        trees[key] = buildBSPTree(windowIDs: orderedIDs, splitVertical: true)
     }
-
-    let tileFrames = computeTileFrames(spaceID: spaceID)
 
     if changed {
         log("re-tiling \(managedWindows.count) windows on space \(spaceID)")
     }
 
-    return tileFrames
-}
-
-// MARK: - Enforcement (compares CG reality to intent, issues AX commands)
-
-func enforceTileFrames(_ tileFrames: [UInt32: CGRect]) {
-    let mouseDown = NSEvent.pressedMouseButtons & 0x1 != 0
-    if mouseDown { return }
-
-    for (id, tileFrame) in tileFrames {
-        guard let win = managedWindows[id] else { continue }
-        if !framesMatch(win.frame, tileFrame) {
-            log("enforce: [\(id)] (\(win.name)) \(formatFrame(win.frame)) → \(formatFrame(tileFrame))")
-            setWindowFrame(win, frame: tileFrame)
-        }
-    }
+    return trees
 }

@@ -24,11 +24,15 @@ struct KeybindingsConfig: Codable {
     var swapModifier: ModifierConfig = {
         var m = ModifierConfig(); m.cmd = true; m.shift = true; return m
     }()
+    var moveToSpaceModifier: ModifierConfig = {
+        var m = ModifierConfig(); m.cmd = true; m.shift = true; return m
+    }()
     var enabled: Bool = true
 
     enum CodingKeys: String, CodingKey {
         case focusModifier = "focus_modifier"
         case swapModifier = "swap_modifier"
+        case moveToSpaceModifier = "move_to_space_modifier"
         case enabled
     }
 }

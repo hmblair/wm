@@ -17,6 +17,31 @@ func directionFromKeyCode(_ keyCode: UInt16) -> Direction? {
     }
 }
 
+private let kVK_ANSI_1: UInt16 = 18
+private let kVK_ANSI_2: UInt16 = 19
+private let kVK_ANSI_3: UInt16 = 20
+private let kVK_ANSI_4: UInt16 = 21
+private let kVK_ANSI_5: UInt16 = 23
+private let kVK_ANSI_6: UInt16 = 22
+private let kVK_ANSI_7: UInt16 = 26
+private let kVK_ANSI_8: UInt16 = 28
+private let kVK_ANSI_9: UInt16 = 25
+
+func spaceIndexFromKeyCode(_ keyCode: UInt16) -> Int? {
+    switch keyCode {
+    case kVK_ANSI_1: return 0
+    case kVK_ANSI_2: return 1
+    case kVK_ANSI_3: return 2
+    case kVK_ANSI_4: return 3
+    case kVK_ANSI_5: return 4
+    case kVK_ANSI_6: return 5
+    case kVK_ANSI_7: return 6
+    case kVK_ANSI_8: return 7
+    case kVK_ANSI_9: return 8
+    default: return nil
+    }
+}
+
 private let directionThreshold: CGFloat = 10
 
 func nearestWindow(from source: CGRect, direction: Direction, among windows: [ManagedWindow]) -> ManagedWindow? {

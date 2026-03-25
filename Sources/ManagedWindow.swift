@@ -18,34 +18,38 @@ class ManagedWindow {
     }
 }
 
-var managedWindows: [UInt32: ManagedWindow] = [:]
-
-func resolveManaged(for focused: Window) -> ManagedWindow? {
-    if let win = managedWindows[focused.id] { return win }
-    return managedWindows.values.first(where: { $0.pid == focused.pid })
+func resolveManaged(for focused: Window, in windows: [UInt32: ManagedWindow]) -> ManagedWindow? {
+    if let win = windows[focused.id] { return win }
+    return windows.values.first(where: { $0.pid == focused.pid })
 }
 
-func reconcileWindows(cgWindows: [CGWindowEntry]) {
+func computeReconciliation(
+    current: [UInt32: ManagedWindow],
+    cgWindows: [CGWindowEntry]
+) -> [UInt32: ManagedWindow] {
+    var result = current
     let visibleIDs = Set(cgWindows.map { $0.id })
 
-    for id in managedWindows.keys where !visibleIDs.contains(id) {
-        let name = managedWindows[id]?.name ?? "?"
+    for id in result.keys where !visibleIDs.contains(id) {
+        let name = result[id]?.name ?? "?"
         log("reconcile: removed window [\(id)] (\(name))")
-        managedWindows.removeValue(forKey: id)
+        result.removeValue(forKey: id)
     }
 
     for entry in cgWindows {
-        if let existing = managedWindows[entry.id] {
+        if let existing = result[entry.id] {
             existing.frame = entry.frame
             continue
         }
 
-        let result = checkWindowEligibility(entry: entry)
-        guard result.reason == nil, let axWindow = result.axWindow else { continue }
+        let elig = checkWindowEligibility(entry: entry)
+        guard elig.reason == nil, let axWindow = elig.axWindow else { continue }
 
         let win = ManagedWindow(id: entry.id, pid: entry.pid, name: entry.name,
                                 axWindow: axWindow, frame: entry.frame)
-        managedWindows[win.id] = win
+        result[win.id] = win
         log("reconcile: added window [\(win.id)] (\(win.name))")
     }
+
+    return result
 }
