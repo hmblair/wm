@@ -33,10 +33,6 @@ private let _SLSCopyManagedDisplaySpaces: @convention(c) (CGSConnectionID) -> CF
     unsafeBitCast(dlsym(skylight, "SLSCopyManagedDisplaySpaces")!, to: (@convention(c) (CGSConnectionID) -> CFArray?).self)
 }()
 
-private let _SLSMoveWindowsToManagedSpace: @convention(c) (CGSConnectionID, CFArray, CGSSpaceID) -> Void = {
-    unsafeBitCast(dlsym(skylight, "SLSMoveWindowsToManagedSpace")!, to: (@convention(c) (CGSConnectionID, CFArray, CGSSpaceID) -> Void).self)
-}()
-
 func spaceForWindow(_ windowID: UInt32) -> CGSSpaceID? {
     let maskAll: UInt32 = 0x7
     guard let spaces = _SLSCopySpacesForWindows(slsConnectionID, maskAll, [windowID] as CFArray) as? [CGSSpaceID],
