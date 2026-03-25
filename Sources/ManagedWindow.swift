@@ -35,15 +35,13 @@ func reconcileWindows(cgWindows: [CGWindowEntry]) {
     }
 
     for entry in cgWindows {
-        if config.ignoredApps.contains(entry.name) { continue }
-
         if let existing = managedWindows[entry.id] {
             existing.frame = entry.frame
             continue
         }
 
-        let (axWindow, reason) = checkWindowEligibility(entry: entry)
-        guard reason == nil, let axWindow = axWindow else { continue }
+        let result = checkWindowEligibility(entry: entry)
+        guard result.reason == nil, let axWindow = result.axWindow else { continue }
 
         let win = ManagedWindow(id: entry.id, pid: entry.pid, name: entry.name,
                                 axWindow: axWindow, frame: entry.frame)
