@@ -91,8 +91,14 @@ func computeBSPTrees(
             orderedIDs.append(win.id)
         }
 
+        let orderedWindows = orderedIDs.compactMap { managedWindows[$0] }
         log("tile: rebuilding BSP for display \(key.displayID) space \(key.spaceID) — \(orderedIDs.count) windows: \(orderedIDs)")
-        trees[key] = buildBSPTree(windowIDs: orderedIDs, splitVertical: true)
+        if let screen = screenForDisplayID(key.displayID) {
+            let rect = visibleFrame(for: screen)
+            trees[key] = buildBSPTreeFitting(windows: orderedWindows, rect: rect, gap: config.gap)
+        } else {
+            trees[key] = buildBSPTree(windowIDs: orderedIDs, splitVertical: true)
+        }
     }
 
     if changed {

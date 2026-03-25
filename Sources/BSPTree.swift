@@ -119,3 +119,102 @@ func buildBSPTree(windowIDs: [UInt32], splitVertical: Bool) -> BSPTree? {
         vertical: splitVertical
     )
 }
+
+// MARK: - Spatial BSP fitting
+
+/// Build a template tree with placeholder leaf IDs (0..<n) for a given
+/// split-orientation bitmask. Bit i controls whether internal node i
+/// splits vertically (1) or horizontally (0).
+private func buildTemplate(count: Int, splitMask: UInt32) -> BSPTree {
+    var nextBit = 0
+    func build(_ n: Int) -> BSPTree {
+        if n == 1 { return .leaf(id: 0) } // placeholder
+        let bit = nextBit
+        nextBit += 1
+        let vertical = (splitMask >> bit) & 1 == 1
+        let leftCount = (n + 1) / 2
+        let rightCount = n - leftCount
+        return .split(left: build(leftCount), right: build(rightCount), vertical: vertical)
+    }
+    return build(count)
+}
+
+/// Replace placeholder leaf IDs (in tree-order) with the given window IDs.
+private func assignIDs(_ tree: BSPTree, ids: [UInt32]) -> BSPTree {
+    var idx = 0
+    func walk(_ node: BSPTree) -> BSPTree {
+        switch node {
+        case .leaf:
+            let id = ids[idx]
+            idx += 1
+            return .leaf(id: id)
+        case .split(let l, let r, let v, let ratio):
+            return .split(left: walk(l), right: walk(r), vertical: v, ratio: ratio)
+        }
+    }
+    return walk(tree)
+}
+
+private func l2Cost(_ a: CGRect, _ b: CGRect) -> CGFloat {
+    let dx = a.midX - b.midX
+    let dy = a.midY - b.midY
+    let dw = a.width - b.width
+    let dh = a.height - b.height
+    return dx * dx + dy * dy + dw * dw + dh * dh
+}
+
+/// Greedily assign windows to tile slots by closest match.
+/// Returns (assignment, totalCost) where assignment[i] is the window index for tile i.
+private func greedyMatch(tileFrames: [CGRect], windowFrames: [CGRect]) -> (assignment: [Int], cost: CGFloat) {
+    let n = tileFrames.count
+    var pairs: [(tile: Int, window: Int, cost: CGFloat)] = []
+    for t in 0..<n {
+        for w in 0..<n {
+            pairs.append((t, w, l2Cost(tileFrames[t], windowFrames[w])))
+        }
+    }
+    pairs.sort { $0.cost < $1.cost }
+
+    var assignedTiles = Set<Int>()
+    var assignedWindows = Set<Int>()
+    var assignment = [Int](repeating: 0, count: n)
+    var totalCost: CGFloat = 0
+
+    for pair in pairs {
+        guard !assignedTiles.contains(pair.tile), !assignedWindows.contains(pair.window) else { continue }
+        assignment[pair.tile] = pair.window
+        assignedTiles.insert(pair.tile)
+        assignedWindows.insert(pair.window)
+        totalCost += pair.cost
+        if assignedTiles.count == n { break }
+    }
+
+    return (assignment, totalCost)
+}
+
+/// Build the BSP tree that best matches the current window positions.
+func buildBSPTreeFitting(windows: [ManagedWindow], rect: CGRect, gap: CGFloat) -> BSPTree? {
+    let n = windows.count
+    guard n > 0 else { return nil }
+    if n == 1 { return .leaf(id: windows[0].id) }
+
+    let windowFrames = windows.map { $0.frame }
+    let internalNodes = n - 1
+    let configCount = 1 << internalNodes
+
+    var bestTree: BSPTree?
+    var bestCost: CGFloat = .infinity
+
+    for mask in 0..<UInt32(configCount) {
+        let template = buildTemplate(count: n, splitMask: mask)
+        let tileFrames = template.computeFrames(rect: rect, gap: gap).map { $0.1 }
+        let (assignment, cost) = greedyMatch(tileFrames: tileFrames, windowFrames: windowFrames)
+        if cost < bestCost {
+            bestCost = cost
+            let orderedIDs = (0..<n).map { windows[assignment[$0]].id }
+            bestTree = assignIDs(template, ids: orderedIDs)
+        }
+    }
+
+    return bestTree
+}
