@@ -44,9 +44,17 @@ func setWindowFrame(_ win: ManagedWindow, frame: CGRect) {
     win.frame = frame
 }
 
+var lastMouseWarpTime: UInt64 = 0
+private let mouseWarpCooldownNs: UInt64 = 150_000_000
+
+func mouseWarpedRecently() -> Bool {
+    return elapsedNsSince(lastMouseWarpTime) < mouseWarpCooldownNs
+}
+
 func warpMouse(to frame: CGRect) {
     let center = CGPoint(x: frame.midX, y: frame.midY)
     log("warp mouse to \(Int(center.x)),\(Int(center.y))")
     CGWarpMouseCursorPosition(center)
     lastMousePosition = center
+    lastMouseWarpTime = mach_absolute_time()
 }

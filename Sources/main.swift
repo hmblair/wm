@@ -317,8 +317,11 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
     // 4. Enforce tile positions
     enforceTileFrames(tileFrames)
 
-    // 5. Focus-follows-mouse
-    handleMousePosition(lastMousePosition, windows: tick.windows)
+    // 5. Focus-follows-mouse (skip briefly after warp — AX moves are async so
+    //    CG frames may not yet reflect the new window positions)
+    if !mouseWarpedRecently() {
+        handleMousePosition(lastMousePosition, windows: tick.windows)
+    }
 
     // 6. External focus tracking
     if let focused = tick.focusedWindow {
