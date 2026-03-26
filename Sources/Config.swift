@@ -89,7 +89,7 @@ func loadConfig(from path: String = Config.defaultPath) -> Config {
     do {
         return try TOMLDecoder().decode(Config.self, from: contents)
     } catch {
-        fputs("focus-follows-mouse: failed to parse \(path): \(error)\n", stderr)
+        warn("config: failed to parse \(path): \(error)")
         return Config()
     }
 }

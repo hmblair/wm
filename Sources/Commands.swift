@@ -14,14 +14,14 @@ func computeSwap(
     guard let result = tree.findCrossingSplit(windowID: managed.id, direction: direction) else { return }
 
     if result.focusedIsAlone {
-        log("cmd+shift+arrow partition swap for \(managed.id)")
+        debug("cmd: partition swap for [\(managed.id)]")
         plan.updatedTrees[key] = tree.swappingChildrenForCrossing(
             windowID: managed.id, direction: direction) ?? tree
     } else {
         let otherWindows = result.otherSideIDs.compactMap { plan.reconciledWindows[$0] }
         guard let target = nearestWindow(from: managed.frame, direction: direction,
                                           among: otherWindows) else { return }
-        log("cmd+shift+arrow window swap: \(managed.id) <-> \(target.id)")
+        debug("cmd: window swap [\(managed.id)] <-> [\(target.id)]")
         plan.updatedTrees[key] = tree.swappingWindows(managed.id, target.id)
     }
 
@@ -34,7 +34,7 @@ func computeFocus(
     let candidates = plan.reconciledWindows.values.filter { $0.id != managed.id }
     guard let target = nearestWindow(from: managed.frame, direction: direction,
                                       among: Array(candidates)) else { return }
-    log("cmd+arrow focus: \(target.id) (\(target.name))")
+    debug("cmd: focus [\(target.id)] (\(target.name))")
     plan.focusAction = .window(target)
     plan.warpTo = target.frame
     plan.newLastFocusedWindow = target.id
@@ -51,7 +51,7 @@ func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
             let cgSummary = snap.cgWindows.prefix(8).map {
                 "[\($0.id)](\($0.name) L\($0.layer) \(formatFrame($0.frame)))"
             }.joined(separator: ", ")
-            log("mouse over desktop — unfocusing (mouse=\(Int(pos.x)),\(Int(pos.y)) lastFocused=\(lastFocusedWindow) managed=\(managedIDs) cg=\(cgSummary))")
+            debug("mouse: desktop unfocus (pos=\(Int(pos.x)),\(Int(pos.y)) lastFocused=\(lastFocusedWindow) managed=\(managedIDs) cg=\(cgSummary))")
             if let finder = NSWorkspace.shared.runningApplications.first(
                 where: { $0.bundleIdentifier == "com.apple.finder" }) {
                 plan.focusAction = .activate(finder)
@@ -67,13 +67,13 @@ func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
 
     if let managed = plan.reconciledWindows[hit.id] {
         if managed.id != lastFocusedWindow {
-            log("mouse focus: \(managed.id) (\(managed.name)) at \(Int(pos.x)),\(Int(pos.y)) — space=\(winSpace) activeSpace=\(snap.spaceID) frame=\(formatFrame(hit.frame))")
+            debug("mouse: focus [\(managed.id)] (\(managed.name)) at \(Int(pos.x)),\(Int(pos.y)) space=\(winSpace) frame=\(formatFrame(hit.frame))")
             plan.focusAction = .window(managed)
             plan.newLastFocusedWindow = managed.id
         }
     } else if let app = NSRunningApplication(processIdentifier: hit.pid) {
         if !app.isActive && hit.layer == 0 {
-            log("mouse focus: \(hit.id) (\(hit.name) pid \(hit.pid)) at \(Int(pos.x)),\(Int(pos.y)) — space=\(winSpace) activeSpace=\(snap.spaceID) frame=\(formatFrame(hit.frame))")
+            debug("mouse: activate [\(hit.id)] (\(hit.name) pid \(hit.pid)) at \(Int(pos.x)),\(Int(pos.y)) space=\(winSpace) frame=\(formatFrame(hit.frame))")
             plan.focusAction = .activate(app)
         }
         plan.newLastFocusedWindow = 0

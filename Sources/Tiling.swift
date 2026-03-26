@@ -55,7 +55,7 @@ func computeBSPTrees(
 
     let spaceChanged = spaceID != lastActiveSpace
     if spaceChanged {
-        log("space changed: \(lastActiveSpace) -> \(spaceID)")
+        log("space: changed \(lastActiveSpace) -> \(spaceID)")
     }
 
     var windowsByDisplay: [CGDirectDisplayID: [ManagedWindow]] = [:]
@@ -92,7 +92,7 @@ func computeBSPTrees(
         }
 
         let orderedWindows = orderedIDs.compactMap { managedWindows[$0] }
-        log("tile: rebuilding BSP for display \(key.displayID) space \(key.spaceID) — \(orderedIDs.count) windows: \(orderedIDs)")
+        debug("tile: rebuild BSP display \(key.displayID) space \(key.spaceID) — \(orderedIDs.count) windows: \(orderedIDs)")
         if let screen = screenForDisplayID(key.displayID) {
             let rect = visibleFrame(for: screen)
             trees[key] = buildBSPTreeFitting(windows: orderedWindows, rect: rect, gap: config.gap)
@@ -102,7 +102,7 @@ func computeBSPTrees(
     }
 
     if changed {
-        log("re-tiling \(managedWindows.count) windows on space \(spaceID)")
+        debug("tile: re-tiling \(managedWindows.count) windows on space \(spaceID)")
     }
 
     return trees

@@ -16,7 +16,7 @@ func handleEvent(
     proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?
 ) -> Unmanaged<CGEvent>? {
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-        warn("event tap re-enabled after system disable")
+        warn("tap: re-enabled after system disable")
         if let tap = globalTap { CGEvent.tapEnable(tap: tap, enable: true) }
         return Unmanaged.passUnretained(event)
     }
@@ -57,14 +57,14 @@ func createEventTap(eventMask: CGEventMask, maxRetries: Int = 10, baseDelay: UIn
             callback: handleEvent, userInfo: nil
         ) {
             if attempt > 0 {
-                log("event tap created after \(attempt + 1) attempts")
+                log("tap: created after \(attempt + 1) attempts")
             }
             return tap
         }
         let delay = baseDelay * UInt32(1 << min(attempt, 4))
-        warn("event tap failed (attempt \(attempt + 1)/\(maxRetries)), retrying...")
+        warn("tap: failed (attempt \(attempt + 1)/\(maxRetries)), retrying...")
         usleep(delay)
     }
-    warn("failed to create event tap after \(maxRetries) attempts — grant accessibility permissions")
+    warn("tap: failed after \(maxRetries) attempts — grant accessibility permissions")
     exit(1)
 }

@@ -75,10 +75,10 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
             hypot($1.frame.midX - snap.mousePosition.x, $1.frame.midY - snap.mousePosition.y)
         })
         if let managed = anchor {
-            log("key cmd anchor: \(managed.id) (\(managed.name))")
+            debug("cmd: anchor [\(managed.id)] (\(managed.name))")
             if resolved == nil {
                 // Desktop focused — just focus the nearest window
-                log("cmd+arrow from desktop: focusing \(managed.id) (\(managed.name))")
+                debug("cmd: desktop focus [\(managed.id)] (\(managed.name))")
                 plan.focusAction = .window(managed)
                 plan.warpTo = managed.frame
                 plan.newLastFocusedWindow = managed.id
@@ -93,7 +93,7 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
                 }
             }
         } else {
-            log("key cmd: no anchor found, focused=\(snap.focusedWindow?.id ?? 0) mouse=\(Int(snap.mousePosition.x)),\(Int(snap.mousePosition.y)) managed=\(plan.reconciledWindows.count)")
+            debug("cmd: no anchor found, focused=\(snap.focusedWindow?.id ?? 0) mouse=\(Int(snap.mousePosition.x)),\(Int(snap.mousePosition.y)) managed=\(plan.reconciledWindows.count)")
         }
     }
 
@@ -105,7 +105,7 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
         let key = DisplaySpaceKey(displayID: did, spaceID: snap.spaceID)
         if let tree = plan.updatedTrees[key],
            let rotated = tree.rotatingParent(of: managed.id) {
-            log("rotate: toggling split orientation for parent of \(managed.id) (\(managed.name))")
+            debug("cmd: rotate parent of [\(managed.id)] (\(managed.name))")
             plan.updatedTrees[key] = rotated
         }
     }
@@ -116,7 +116,7 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
         if let spaceIndex = snap.moveCommands.last {
             let spaces = orderedSpaceIDs()
             if spaceIndex < spaces.count && spaces[spaceIndex] != snap.spaceID {
-                log("move-to-space: window \(managed.id) (\(managed.name)) → space \(spaceIndex + 1)")
+                log("space: move [\(managed.id)] (\(managed.name)) → space \(spaceIndex + 1)")
                 plan.moveToSpace = (managed.axWindow, spaceIndex)
                 plan.reconciledWindows.removeValue(forKey: managed.id)
                 plan.setPendingWarp = managed.id

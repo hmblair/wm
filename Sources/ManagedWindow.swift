@@ -32,7 +32,7 @@ func computeReconciliation(
 
     for id in result.keys where !visibleIDs.contains(id) {
         let name = result[id]?.name ?? "?"
-        log("reconcile: removed window [\(id)] (\(name))")
+        debug("reconcile: removed [\(id)] (\(name))")
         result.removeValue(forKey: id)
     }
 
@@ -48,7 +48,7 @@ func computeReconciliation(
         let win = ManagedWindow(id: entry.id, pid: entry.pid, name: entry.name,
                                 axWindow: axWindow, frame: entry.frame)
         result[win.id] = win
-        log("reconcile: added window [\(win.id)] (\(win.name))")
+        debug("reconcile: added [\(win.id)] (\(win.name))")
     }
 
     return result

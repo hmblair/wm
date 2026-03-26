@@ -28,7 +28,7 @@ func executePlan(_ plan: TickPlan, snap: WorldSnapshot) {
         for (id, tileFrame) in plan.tileFrames {
             guard let win = managedWindows[id] else { continue }
             if !framesMatch(win.frame, tileFrame) {
-                log("enforce: [\(id)] (\(win.name)) \(formatFrame(win.frame)) → \(formatFrame(tileFrame))")
+                debug("tile: enforce [\(id)] (\(win.name)) \(formatFrame(win.frame)) → \(formatFrame(tileFrame))")
                 setWindowFrame(win, frame: tileFrame)
             }
         }
