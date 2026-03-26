@@ -43,40 +43,31 @@ func computeFocus(
 func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
     let pos = snap.mousePosition
 
-    // Hit-test against tile frames (intended positions) for managed windows
-    for (id, tileFrame) in plan.tileFrames {
-        if tileFrame.contains(pos), let managed = plan.reconciledWindows[id] {
-            if managed.id != lastFocusedWindow {
-                log("mouse focus: \(managed.id) (\(managed.name)) at \(Int(pos.x)),\(Int(pos.y))")
-                plan.focusTarget = managed
-                plan.newLastFocusedWindow = managed.id
-            }
-            return
-        }
-    }
-
-    // Hit-test unmanaged windows from CG data
-    let windows = snap.cgWindows
-        .filter { !config.ignoredApps.contains($0.name) }
-        .map { Window(id: $0.id, pid: $0.pid, name: $0.name, frame: $0.frame) }
-    for win in windows {
-        guard win.frame.contains(pos) else { continue }
-        if plan.reconciledWindows[win.id] != nil { continue }
-        if win.name == "DockHelper" { return }
-        if let app = NSRunningApplication(processIdentifier: win.pid) {
-            if !app.isActive {
-                log("mouse focus: \(win.id) (pid \(win.pid)) at \(Int(pos.x)),\(Int(pos.y))")
-                plan.activateApp = app
-            }
+    // Find the topmost window under the cursor (CG list is z-ordered)
+    guard let hit = snap.cgWindows.first(where: { $0.frame.contains(pos) }) else {
+        // Mouse over desktop
+        if lastFocusedWindow != 0 {
+            log("mouse over desktop — unfocusing")
+            plan.unfocusToFinder = true
             plan.newLastFocusedWindow = 0
         }
         return
     }
 
-    // Mouse over desktop
-    if lastFocusedWindow != 0 {
-        log("mouse over desktop — unfocusing")
-        plan.unfocusToFinder = true
+    if config.ignoredApps.contains(hit.name) { return }
+    if hit.name == "DockHelper" { return }
+
+    if let managed = plan.reconciledWindows[hit.id] {
+        if managed.id != lastFocusedWindow {
+            log("mouse focus: \(managed.id) (\(managed.name)) at \(Int(pos.x)),\(Int(pos.y))")
+            plan.focusTarget = managed
+            plan.newLastFocusedWindow = managed.id
+        }
+    } else if let app = NSRunningApplication(processIdentifier: hit.pid) {
+        if !app.isActive {
+            log("mouse focus: \(hit.id) (pid \(hit.pid)) at \(Int(pos.x)),\(Int(pos.y))")
+            plan.activateApp = app
+        }
         plan.newLastFocusedWindow = 0
     }
 }
