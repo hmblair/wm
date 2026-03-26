@@ -66,15 +66,34 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
     plan.newLastActiveSpace = snap.spaceID
 
     // 3. Process key commands (pure BSP/focus transforms)
-    if !snap.commands.isEmpty, let focused = snap.focusedWindow,
-       let managed = resolveManaged(for: focused, in: plan.reconciledWindows) {
-        for cmd in snap.commands {
-            if cmd.swap {
-                computeSwap(managed: managed, direction: cmd.direction,
-                            spaceID: snap.spaceID, plan: &plan)
+    if !snap.commands.isEmpty {
+        let resolved = snap.focusedWindow.flatMap {
+            resolveManaged(for: $0, in: plan.reconciledWindows)
+        }
+        let anchor = resolved ?? plan.reconciledWindows.values.min(by: {
+            hypot($0.frame.midX - snap.mousePosition.x, $0.frame.midY - snap.mousePosition.y) <
+            hypot($1.frame.midX - snap.mousePosition.x, $1.frame.midY - snap.mousePosition.y)
+        })
+        if let managed = anchor {
+            log("key cmd anchor: \(managed.id) (\(managed.name))")
+            if resolved == nil {
+                // Desktop focused — just focus the nearest window
+                log("cmd+arrow from desktop: focusing \(managed.id) (\(managed.name))")
+                plan.focusAction = .window(managed)
+                plan.warpTo = managed.frame
+                plan.newLastFocusedWindow = managed.id
             } else {
-                computeFocus(managed: managed, direction: cmd.direction, plan: &plan)
+                for cmd in snap.commands {
+                    if cmd.swap {
+                        computeSwap(managed: managed, direction: cmd.direction,
+                                    spaceID: snap.spaceID, plan: &plan)
+                    } else {
+                        computeFocus(managed: managed, direction: cmd.direction, plan: &plan)
+                    }
+                }
             }
+        } else {
+            log("key cmd: no anchor found, focused=\(snap.focusedWindow?.id ?? 0) mouse=\(Int(snap.mousePosition.x)),\(Int(snap.mousePosition.y)) managed=\(plan.reconciledWindows.count)")
         }
     }
 
