@@ -28,7 +28,8 @@ install: build
 	@defaults write -g EnableTilingByEdgeDrag -bool false
 	@defaults write -g EnableTopTilingByEdgeDrag -bool false
 	@defaults write -g EnableTilingOptionAccelerator -bool false
-	@echo "Disabled macOS built-in tiling (logout required to take effect)."
+	@defaults write com.apple.dock mru-spaces -bool false && killall Dock
+	@echo "Disabled macOS built-in tiling and automatic Space reordering."
 	@echo "Installed to $(APP_DIR)"
 	@echo "Run 'make load' to start the service."
 
