@@ -34,7 +34,7 @@ private let _SLSCopyManagedDisplaySpaces: @convention(c) (CGSConnectionID) -> CF
 }()
 
 func spaceForWindow(_ windowID: UInt32) -> CGSSpaceID? {
-    let maskAll: UInt32 = 0x7
+    let maskAll: UInt32 = 0x7 // kCGSAllSpacesMask: current + others + fullscreen
     guard let spaces = _SLSCopySpacesForWindows(slsConnectionID, maskAll, [windowID] as CFArray) as? [CGSSpaceID],
           let first = spaces.first else { return nil }
     return first

@@ -2,10 +2,12 @@ import CoreGraphics
 
 enum Direction { case left, right, up, down }
 
-private let kVK_LeftArrow: UInt16 = 123
-private let kVK_RightArrow: UInt16 = 124
-private let kVK_DownArrow: UInt16 = 125
-private let kVK_UpArrow: UInt16 = 126
+// Virtual keycodes (from Events.h)
+let kVK_ANSI_R: UInt16 = 15
+let kVK_LeftArrow: UInt16 = 123
+let kVK_RightArrow: UInt16 = 124
+let kVK_DownArrow: UInt16 = 125
+let kVK_UpArrow: UInt16 = 126
 
 func directionFromKeyCode(_ keyCode: UInt16) -> Direction? {
     switch keyCode {
@@ -17,15 +19,15 @@ func directionFromKeyCode(_ keyCode: UInt16) -> Direction? {
     }
 }
 
-private let kVK_ANSI_1: UInt16 = 18
-private let kVK_ANSI_2: UInt16 = 19
-private let kVK_ANSI_3: UInt16 = 20
-private let kVK_ANSI_4: UInt16 = 21
-private let kVK_ANSI_5: UInt16 = 23
-private let kVK_ANSI_6: UInt16 = 22
-private let kVK_ANSI_7: UInt16 = 26
-private let kVK_ANSI_8: UInt16 = 28
-private let kVK_ANSI_9: UInt16 = 25
+let kVK_ANSI_1: UInt16 = 18
+let kVK_ANSI_2: UInt16 = 19
+let kVK_ANSI_3: UInt16 = 20
+let kVK_ANSI_4: UInt16 = 21
+let kVK_ANSI_5: UInt16 = 23
+let kVK_ANSI_6: UInt16 = 22
+let kVK_ANSI_7: UInt16 = 26
+let kVK_ANSI_8: UInt16 = 28
+let kVK_ANSI_9: UInt16 = 25
 
 func spaceIndexFromKeyCode(_ keyCode: UInt16) -> Int? {
     switch keyCode {

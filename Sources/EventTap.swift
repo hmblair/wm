@@ -10,8 +10,6 @@ var pendingKeyCommands: [PendingKeyCommand] = []
 var pendingMoveToSpace: [Int] = []
 var pendingRotate = false
 
-private let kVK_ANSI_R: UInt16 = 15
-
 var globalTap: CFMachPort?
 
 func handleEvent(

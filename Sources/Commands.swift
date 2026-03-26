@@ -25,13 +25,7 @@ func computeSwap(
         plan.updatedTrees[key] = tree.swappingWindows(managed.id, target.id)
     }
 
-    let frames = computeTileFrames(
-        trees: plan.updatedTrees,
-        managedWindows: plan.reconciledWindows,
-        spaceID: spaceID)
-    if let frame = frames[managed.id] {
-        plan.warpTo = frame
-    }
+    plan.warpToWindow = managed.id
 }
 
 func computeFocus(

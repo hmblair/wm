@@ -44,6 +44,7 @@ struct TickPlan {
     var activateApp: NSRunningApplication? = nil
     var unfocusToFinder: Bool = false
     var warpTo: CGRect? = nil
+    var warpToWindow: UInt32? = nil
     var moveToSpace: (axWindow: AXUIElement, spaceIndex: Int)? = nil
     var newLastFocusedWindow: UInt32? = nil
     var setPendingWarp: UInt32 = 0
@@ -119,7 +120,12 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
             spaceID: snap.spaceID)
     }
 
-    // 6. Resolve pending warp from previous tick's move-to-space
+    // 6. Resolve deferred warp-to-window (set by computeSwap)
+    if let wid = plan.warpToWindow, let frame = plan.tileFrames[wid] {
+        plan.warpTo = frame
+    }
+
+    // 7. Resolve pending warp from previous tick's move-to-space
     if pendingWarpToWindow != 0 && plan.warpTo == nil {
         if let tileFrame = plan.tileFrames[pendingWarpToWindow] {
             plan.warpTo = tileFrame
