@@ -47,7 +47,11 @@ func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
     guard let hit = snap.cgWindows.first(where: { $0.frame.contains(pos) }) else {
         // Mouse over desktop
         if lastFocusedWindow != 0 {
-            log("mouse over desktop — unfocusing")
+            let managedIDs = plan.reconciledWindows.keys.sorted()
+            let cgSummary = snap.cgWindows.prefix(8).map {
+                "[\($0.id)](\($0.name) L\($0.layer) \(formatFrame($0.frame)))"
+            }.joined(separator: ", ")
+            log("mouse over desktop — unfocusing (mouse=\(Int(pos.x)),\(Int(pos.y)) lastFocused=\(lastFocusedWindow) managed=\(managedIDs) cg=\(cgSummary))")
             plan.unfocusToFinder = true
             plan.newLastFocusedWindow = 0
         }
@@ -56,15 +60,17 @@ func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
 
     if config.ignoredApps.contains(hit.name) { return }
 
+    let winSpace = spaceForWindow(hit.id).map(String.init) ?? "?"
+
     if let managed = plan.reconciledWindows[hit.id] {
         if managed.id != lastFocusedWindow {
-            log("mouse focus: \(managed.id) (\(managed.name)) at \(Int(pos.x)),\(Int(pos.y))")
+            log("mouse focus: \(managed.id) (\(managed.name)) at \(Int(pos.x)),\(Int(pos.y)) — space=\(winSpace) activeSpace=\(snap.spaceID) frame=\(formatFrame(hit.frame))")
             plan.focusTarget = managed
             plan.newLastFocusedWindow = managed.id
         }
     } else if let app = NSRunningApplication(processIdentifier: hit.pid) {
         if !app.isActive && hit.layer == 0 {
-            log("mouse focus: \(hit.id) (pid \(hit.pid)) at \(Int(pos.x)),\(Int(pos.y))")
+            log("mouse focus: \(hit.id) (\(hit.name) pid \(hit.pid)) at \(Int(pos.x)),\(Int(pos.y)) — space=\(winSpace) activeSpace=\(snap.spaceID) frame=\(formatFrame(hit.frame))")
             plan.activateApp = app
         }
         plan.newLastFocusedWindow = 0

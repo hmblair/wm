@@ -3,11 +3,15 @@ import ApplicationServices
 
 func focusWindow(_ win: ManagedWindow) {
     if let runningApp = NSRunningApplication(processIdentifier: win.pid) {
-        runningApp.activate()
+        let ok = runningApp.activate()
+        log("  activate pid \(win.pid) (\(win.name)): \(ok)")
     }
 
-    AXUIElementPerformAction(win.axWindow, kAXRaiseAction as CFString)
-    AXUIElementSetAttributeValue(win.axWindow, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    let raiseErr = AXUIElementPerformAction(win.axWindow, kAXRaiseAction as CFString)
+    let focusErr = AXUIElementSetAttributeValue(win.axWindow, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    if raiseErr != .success || focusErr != .success {
+        log("  AX focus [\(win.id)]: raise=\(raiseErr.rawValue) focused=\(focusErr.rawValue)")
+    }
 }
 
 func setWindowFrame(_ win: ManagedWindow, frame: CGRect) {

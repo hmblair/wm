@@ -36,6 +36,7 @@ var bspTrees: [DisplaySpaceKey: BSPTree] = [:]
 var lastActiveSpace: CGSSpaceID = 0
 var lastFocusedWindow: UInt32 = 0
 var pendingWarpToWindow: UInt32 = 0
+var tickNumber: UInt64 = 0
 var lastMousePosition: CGPoint = {
     let nsPos = NSEvent.mouseLocation
     let screenHeight = NSScreen.screens.first?.frame.height ?? 0
@@ -79,6 +80,7 @@ CGEvent.tapEnable(tap: tap, enable: true)
 // --- Main loop (read → compute → execute) ---
 
 func tick() {
+    tickNumber += 1
     let snap = readWorld()
     let plan = computePlan(snap)
     executePlan(plan, snap: snap)

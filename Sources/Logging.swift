@@ -4,7 +4,7 @@ private let logger = Logger(subsystem: "com.hmblair.focus-follows-mouse", catego
 
 private func emit(_ msg: String, level: OSLogType = .info) {
     logger.log(level: level, "\(msg, privacy: .public)")
-    if verbose { fputs("\(msg)\n", stderr) }
+    if verbose { fputs("[tick \(tickNumber)] \(msg)\n", stderr) }
 }
 
 func log(_ message: @autoclosure () -> String) { emit(message()) }
