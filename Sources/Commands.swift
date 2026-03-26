@@ -35,7 +35,7 @@ func computeFocus(
     guard let target = nearestWindow(from: managed.frame, direction: direction,
                                       among: Array(candidates)) else { return }
     log("cmd+arrow focus: \(target.id) (\(target.name))")
-    plan.focusTarget = target
+    plan.focusAction = .window(target)
     plan.warpTo = target.frame
     plan.newLastFocusedWindow = target.id
 }
@@ -52,7 +52,10 @@ func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
                 "[\($0.id)](\($0.name) L\($0.layer) \(formatFrame($0.frame)))"
             }.joined(separator: ", ")
             log("mouse over desktop — unfocusing (mouse=\(Int(pos.x)),\(Int(pos.y)) lastFocused=\(lastFocusedWindow) managed=\(managedIDs) cg=\(cgSummary))")
-            plan.unfocusToFinder = true
+            if let finder = NSWorkspace.shared.runningApplications.first(
+                where: { $0.bundleIdentifier == "com.apple.finder" }) {
+                plan.focusAction = .activate(finder)
+            }
             plan.newLastFocusedWindow = 0
         }
         return
@@ -65,13 +68,13 @@ func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
     if let managed = plan.reconciledWindows[hit.id] {
         if managed.id != lastFocusedWindow {
             log("mouse focus: \(managed.id) (\(managed.name)) at \(Int(pos.x)),\(Int(pos.y)) — space=\(winSpace) activeSpace=\(snap.spaceID) frame=\(formatFrame(hit.frame))")
-            plan.focusTarget = managed
+            plan.focusAction = .window(managed)
             plan.newLastFocusedWindow = managed.id
         }
     } else if let app = NSRunningApplication(processIdentifier: hit.pid) {
         if !app.isActive && hit.layer == 0 {
             log("mouse focus: \(hit.id) (\(hit.name) pid \(hit.pid)) at \(Int(pos.x)),\(Int(pos.y)) — space=\(winSpace) activeSpace=\(snap.spaceID) frame=\(formatFrame(hit.frame))")
-            plan.activateApp = app
+            plan.focusAction = .activate(app)
         }
         plan.newLastFocusedWindow = 0
     }

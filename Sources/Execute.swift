@@ -35,18 +35,8 @@ func executePlan(_ plan: TickPlan, snap: WorldSnapshot) {
     }
 
     // 4. Focus
-    if let target = plan.focusTarget {
-        log("exec: focusWindow [\(target.id)] (\(target.name))")
-        focusWindow(target)
-    } else if let app = plan.activateApp {
-        log("exec: activateApp \(app.localizedName ?? "?") (pid \(app.processIdentifier))")
-        app.activate()
-    } else if plan.unfocusToFinder {
-        log("exec: unfocusToFinder")
-        if let finder = NSWorkspace.shared.runningApplications.first(
-            where: { $0.bundleIdentifier == "com.apple.finder" }) {
-            finder.activate()
-        }
+    if let action = plan.focusAction {
+        executeFocus(action)
     }
 
     // 5. Warp mouse (single warp, after everything else)

@@ -40,9 +40,7 @@ struct TickPlan {
     var reconciledWindows: [UInt32: ManagedWindow] = [:]
     var updatedTrees: [DisplaySpaceKey: BSPTree] = [:]
     var tileFrames: [UInt32: CGRect] = [:]
-    var focusTarget: ManagedWindow? = nil
-    var activateApp: NSRunningApplication? = nil
-    var unfocusToFinder: Bool = false
+    var focusAction: FocusAction? = nil
     var warpTo: CGRect? = nil
     var warpToWindow: UInt32? = nil
     var moveToSpace: (axWindow: AXUIElement, spaceIndex: Int)? = nil
@@ -134,13 +132,13 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
     }
 
     // 7. Mouse focus (only if no command already set focus/warp and no pending warp)
-    if plan.focusTarget == nil && plan.warpTo == nil
+    if plan.focusAction == nil && plan.warpTo == nil
         && pendingWarpToWindow == 0 && plan.setPendingWarp == 0 {
         computeMouseFocus(snap: snap, plan: &plan)
     }
 
     // 8. External focus tracking
-    if plan.focusTarget == nil && plan.warpTo == nil,
+    if plan.focusAction == nil && plan.warpTo == nil,
        let focused = snap.focusedWindow,
        focused.id != lastFocusedWindow && lastFocusedWindow != 0 {
         let frame = plan.tileFrames[focused.id]
