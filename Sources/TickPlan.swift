@@ -55,7 +55,7 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
 
     // 1. Reconcile windows
     plan.reconciledWindows = computeReconciliation(
-        current: managedWindows, cgWindows: snap.cgWindows)
+        current: managedWindows, cgWindows: snap.cgWindows, spaceID: snap.spaceID)
 
     // 2. Rebuild BSP trees
     plan.updatedTrees = computeBSPTrees(

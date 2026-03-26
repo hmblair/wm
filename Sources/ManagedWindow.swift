@@ -25,7 +25,8 @@ func resolveManaged(for focused: Window, in windows: [UInt32: ManagedWindow]) ->
 
 func computeReconciliation(
     current: [UInt32: ManagedWindow],
-    cgWindows: [CGWindowEntry]
+    cgWindows: [CGWindowEntry],
+    spaceID: CGSSpaceID = 0
 ) -> [UInt32: ManagedWindow] {
     var result = current
     let visibleIDs = Set(cgWindows.map { $0.id })
@@ -39,6 +40,10 @@ func computeReconciliation(
     for entry in cgWindows {
         if let existing = result[entry.id] {
             existing.frame = entry.frame
+            continue
+        }
+
+        if spaceID != 0, let winSpace = spaceForWindow(entry.id), winSpace != spaceID {
             continue
         }
 

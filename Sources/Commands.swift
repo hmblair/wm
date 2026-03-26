@@ -72,7 +72,8 @@ func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
             plan.newLastFocusedWindow = managed.id
         }
     } else if let app = NSRunningApplication(processIdentifier: hit.pid) {
-        if !app.isActive && hit.layer == 0 {
+        let onCurrentSpace = spaceForWindow(hit.id) == snap.spaceID
+        if !app.isActive && hit.layer == 0 && onCurrentSpace {
             debug("mouse: activate [\(hit.id)] (\(hit.name) pid \(hit.pid)) at \(Int(pos.x)),\(Int(pos.y)) space=\(winSpace) frame=\(formatFrame(hit.frame))")
             plan.focusAction = .activate(app)
         }
