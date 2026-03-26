@@ -55,7 +55,6 @@ func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
     }
 
     if config.ignoredApps.contains(hit.name) { return }
-    if hit.name == "DockHelper" { return }
 
     if let managed = plan.reconciledWindows[hit.id] {
         if managed.id != lastFocusedWindow {
@@ -64,7 +63,7 @@ func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
             plan.newLastFocusedWindow = managed.id
         }
     } else if let app = NSRunningApplication(processIdentifier: hit.pid) {
-        if !app.isActive {
+        if !app.isActive && hit.layer == 0 {
             log("mouse focus: \(hit.id) (pid \(hit.pid)) at \(Int(pos.x)),\(Int(pos.y))")
             plan.activateApp = app
         }
