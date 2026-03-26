@@ -4,7 +4,7 @@ private var statusItem: NSStatusItem?
 
 func setupStatusBar() {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    statusItem?.button?.font = NSFont.monospacedSystemFont(ofSize: 16, weight: .regular)
+    statusItem?.button?.font = NSFont.systemFont(ofSize: 16, weight: .regular)
     updateStatusBar()
 }
 
@@ -22,7 +22,7 @@ func updateStatusBar() {
     }
 
     let attributed = NSMutableAttributedString()
-    let activeColor = NSColor.controlAccentColor
+    let activeColor = NSColor.labelColor
     let occupiedColor = NSColor.labelColor
     let emptyColor = NSColor.tertiaryLabelColor
 
@@ -39,7 +39,7 @@ func updateStatusBar() {
         let weight: NSFont.Weight = isActive ? .bold : .regular
         let attrs: [NSAttributedString.Key: Any] = [
             .foregroundColor: color,
-            .font: NSFont.monospacedSystemFont(ofSize: 16, weight: weight),
+            .font: NSFont.systemFont(ofSize: 16, weight: weight),
         ]
 
         if i > 0 {
