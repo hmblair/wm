@@ -82,33 +82,19 @@ func findAXWindowByPidAndID(pid: Int32, windowID: UInt32) -> AXUIElement? {
     return nil
 }
 
-enum WindowExcludeReason: CustomStringConvertible {
-    case ignoredApp, excludedApp, noAXHandle, subrole(String), fullScreen
-
-    var description: String {
-        switch self {
-        case .ignoredApp: return "ignored app"
-        case .excludedApp: return "excluded app"
-        case .noAXHandle: return "no AX handle"
-        case .subrole(let s): return "subrole: \(s)"
-        case .fullScreen: return "full screen"
-        }
-    }
-}
-
-struct EligibilityResult {
-    let axWindow: AXUIElement?
-    let subrole: String?
-    let reason: WindowExcludeReason?
+enum EligibilityResult {
+    case manageable(axWindow: AXUIElement, subrole: String?)
+    case excluded(reason: String, subrole: String?)
+    case notManageable
 }
 
 func checkWindowEligibility(entry: CGWindowEntry) -> EligibilityResult {
-    if config.ignoredApps.contains(entry.name) { return EligibilityResult(axWindow: nil, subrole: nil, reason: .ignoredApp) }
-    guard manageableLayers.contains(entry.layer) else { return EligibilityResult(axWindow: nil, subrole: nil, reason: nil) }
-    if config.excludedApps.contains(entry.name) { return EligibilityResult(axWindow: nil, subrole: nil, reason: .excludedApp) }
+    if config.ignoredApps.contains(entry.name) { return .excluded(reason: "ignored app", subrole: nil) }
+    guard manageableLayers.contains(entry.layer) else { return .notManageable }
+    if config.excludedApps.contains(entry.name) { return .excluded(reason: "excluded app", subrole: nil) }
 
     guard let axWindow = findAXWindowByPidAndID(pid: entry.pid, windowID: entry.id) else {
-        return EligibilityResult(axWindow: nil, subrole: nil, reason: .noAXHandle)
+        return .excluded(reason: "no AX handle", subrole: nil)
     }
 
     var subroleRef: CFTypeRef?
@@ -116,14 +102,14 @@ func checkWindowEligibility(entry: CGWindowEntry) -> EligibilityResult {
     let subrole = subroleRef as? String
 
     guard (subrole ?? "nil") == kAXStandardWindowSubrole as String else {
-        return EligibilityResult(axWindow: axWindow, subrole: subrole, reason: .subrole(subrole ?? "nil"))
+        return .excluded(reason: "subrole: \(subrole ?? "nil")", subrole: subrole)
     }
 
     var fullScreenRef: CFTypeRef?
     if AXUIElementCopyAttributeValue(axWindow, "AXFullScreen" as CFString, &fullScreenRef) == .success,
        let isFullScreen = fullScreenRef as? Bool, isFullScreen {
-        return EligibilityResult(axWindow: axWindow, subrole: subrole, reason: .fullScreen)
+        return .excluded(reason: "full screen", subrole: subrole)
     }
 
-    return EligibilityResult(axWindow: axWindow, subrole: subrole, reason: nil)
+    return .manageable(axWindow: axWindow, subrole: subrole)
 }

@@ -1,6 +1,36 @@
 import Cocoa
 import ApplicationServices
 
+func axPosition(of element: AXUIElement) -> CGPoint {
+    var ref: CFTypeRef?
+    AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &ref)
+    var point = CGPoint.zero
+    if let r = ref { AXValueGetValue(r as! AXValue, .cgPoint, &point) }
+    return point
+}
+
+func axSize(of element: AXUIElement) -> CGSize {
+    var ref: CFTypeRef?
+    AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &ref)
+    var size = CGSize.zero
+    if let r = ref { AXValueGetValue(r as! AXValue, .cgSize, &size) }
+    return size
+}
+
+@discardableResult
+func setAXPosition(of element: AXUIElement, to point: CGPoint) -> AXError {
+    var p = point
+    guard let value = AXValueCreate(.cgPoint, &p) else { return .failure }
+    return AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, value)
+}
+
+@discardableResult
+func setAXSize(of element: AXUIElement, to size: CGSize) -> AXError {
+    var s = size
+    guard let value = AXValueCreate(.cgSize, &s) else { return .failure }
+    return AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, value)
+}
+
 enum FocusAction {
     case window(ManagedWindow)
     case activate(NSRunningApplication)
@@ -26,31 +56,20 @@ func executeFocus(_ action: FocusAction) {
 }
 
 func setWindowFrame(_ win: ManagedWindow, frame: CGRect) {
-    var position = frame.origin
-    var size = frame.size
-    if let posValue = AXValueCreate(.cgPoint, &position) {
-        let err = AXUIElementSetAttributeValue(win.axWindow, kAXPositionAttribute as CFString, posValue)
-        if err != .success {
-            warn("tile: AX set position failed for [\(win.id)] (\(win.name)): \(err.rawValue)")
-        }
+    let posErr = setAXPosition(of: win.axWindow, to: frame.origin)
+    if posErr != .success {
+        warn("tile: AX set position failed for [\(win.id)] (\(win.name)): \(posErr.rawValue)")
     }
-    if let sizeValue = AXValueCreate(.cgSize, &size) {
-        let err = AXUIElementSetAttributeValue(win.axWindow, kAXSizeAttribute as CFString, sizeValue)
-        if err != .success {
-            warn("tile: AX set size failed for [\(win.id)] (\(win.name)): \(err.rawValue)")
-        }
+    let sizeErr = setAXSize(of: win.axWindow, to: frame.size)
+    if sizeErr != .success {
+        warn("tile: AX set size failed for [\(win.id)] (\(win.name)): \(sizeErr.rawValue)")
     }
 
-    var actualSizeRef: CFTypeRef?
-    if AXUIElementCopyAttributeValue(win.axWindow, kAXSizeAttribute as CFString, &actualSizeRef) == .success,
-       let sRef = actualSizeRef {
-        var readBack = CGSize.zero
-        AXValueGetValue(sRef as! AXValue, .cgSize, &readBack)
-        let dw = frame.width - readBack.width
-        let dh = frame.height - readBack.height
-        if dw > frameTolerance || dh > frameTolerance {
-            win.actualSize = readBack
-        }
+    let readBack = axSize(of: win.axWindow)
+    let dw = frame.width - readBack.width
+    let dh = frame.height - readBack.height
+    if dw > frameTolerance || dh > frameTolerance {
+        win.actualSize = readBack
     }
 
     win.frame = frame

@@ -70,15 +70,8 @@ func updateStatusBar() {
 }
 
 func switchToSpace(_ index: Int) {
-    let codes: [UInt16] = [18, 19, 20, 21, 23, 22, 26, 28, 25]
-    guard index < codes.count else { return }
-    let source = CGEventSource(stateID: .hidSystemState)
-    let keyDown = CGEvent(keyboardEventSource: source, virtualKey: codes[index], keyDown: true)!
-    keyDown.flags = .maskControl
-    let keyUp = CGEvent(keyboardEventSource: source, virtualKey: codes[index], keyDown: false)!
-    keyUp.flags = .maskControl
-    keyDown.post(tap: .cghidEventTap)
-    keyUp.post(tap: .cghidEventTap)
+    guard index < spaceKeyCodes.count else { return }
+    postKeyEvent(keyCode: spaceKeyCodes[index])
 }
 
 private class SpaceButton: NSButton {

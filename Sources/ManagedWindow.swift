@@ -47,8 +47,7 @@ func computeReconciliation(
             continue
         }
 
-        let elig = checkWindowEligibility(entry: entry)
-        guard elig.reason == nil, let axWindow = elig.axWindow else { continue }
+        guard case .manageable(let axWindow, _) = checkWindowEligibility(entry: entry) else { continue }
 
         let win = ManagedWindow(id: entry.id, pid: entry.pid, name: entry.name,
                                 axWindow: axWindow, frame: entry.frame)

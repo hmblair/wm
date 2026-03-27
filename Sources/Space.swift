@@ -55,21 +55,21 @@ func orderedSpaceIDs() -> [CGSSpaceID] {
     return result
 }
 
-private func spaceIndexKeyCode(_ index: Int) -> UInt16 {
-    let codes: [UInt16] = [18, 19, 20, 21, 23, 22, 26, 28, 25]
-    return codes[min(index, codes.count - 1)]
+let spaceKeyCodes: [UInt16] = [18, 19, 20, 21, 23, 22, 26, 28, 25]
+
+func postKeyEvent(keyCode: UInt16, flags: CGEventFlags = .maskControl) {
+    let source = CGEventSource(stateID: .hidSystemState)
+    let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)!
+    keyDown.flags = flags
+    let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)!
+    keyUp.flags = flags
+    keyDown.post(tap: .cghidEventTap)
+    keyUp.post(tap: .cghidEventTap)
 }
 
 func moveWindowToSpace(axWindow: AXUIElement, spaceIndex: Int) {
-    var posRef: CFTypeRef?
-    AXUIElementCopyAttributeValue(axWindow, kAXPositionAttribute as CFString, &posRef)
-    var pos = CGPoint.zero
-    if let pr = posRef { AXValueGetValue(pr as! AXValue, .cgPoint, &pos) }
-
-    var sizeRef: CFTypeRef?
-    AXUIElementCopyAttributeValue(axWindow, kAXSizeAttribute as CFString, &sizeRef)
-    var size = CGSize.zero
-    if let sr = sizeRef { AXValueGetValue(sr as! AXValue, .cgSize, &size) }
+    let pos = axPosition(of: axWindow)
+    let size = axSize(of: axWindow)
 
     let titleBar = CGPoint(x: pos.x + size.width / 2, y: pos.y + 15)
     let source = CGEventSource(stateID: .hidSystemState)
@@ -77,13 +77,8 @@ func moveWindowToSpace(axWindow: AXUIElement, spaceIndex: Int) {
     CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: titleBar, mouseButton: .left)!
         .post(tap: .cghidEventTap)
 
-    let keyCode = spaceIndexKeyCode(spaceIndex)
-    let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)!
-    keyDown.flags = .maskControl
-    let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)!
-    keyUp.flags = .maskControl
-    keyDown.post(tap: .cghidEventTap)
-    keyUp.post(tap: .cghidEventTap)
+    guard spaceIndex < spaceKeyCodes.count else { return }
+    postKeyEvent(keyCode: spaceKeyCodes[spaceIndex])
 
     CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: titleBar, mouseButton: .left)!
         .post(tap: .cghidEventTap)

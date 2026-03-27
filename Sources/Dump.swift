@@ -20,14 +20,15 @@ func dumpWindowInfo() -> DumpSnapshot {
         allWindows.append(Window(id: entry.id, pid: entry.pid, name: entry.name, frame: entry.frame))
         layers[entry.id] = entry.layer
 
-        let result = checkWindowEligibility(entry: entry)
-
-        if let s = result.subrole { subroles[entry.id] = s }
-
-        if let reason = result.reason {
-            excludeReasons[entry.id] = reason.description
-        } else if result.axWindow != nil {
+        switch checkWindowEligibility(entry: entry) {
+        case .manageable(_, let subrole):
             manageableIDs.insert(entry.id)
+            if let s = subrole { subroles[entry.id] = s }
+        case .excluded(let reason, let subrole):
+            excludeReasons[entry.id] = reason
+            if let s = subrole { subroles[entry.id] = s }
+        case .notManageable:
+            break
         }
     }
 
