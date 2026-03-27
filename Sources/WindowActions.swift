@@ -31,9 +31,8 @@ func setAXSize(of element: AXUIElement, to size: CGSize) -> AXError {
     return AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, value)
 }
 
-private func updateConstraint(current: CGFloat?, actual: CGFloat, unconstrained: CGFloat) -> (CGFloat?, Bool) {
-    if current != actual { return (actual, true) }
-    return (current, false)
+private func updateConstraint(current: CGFloat?, actual: CGFloat) -> (CGFloat, Bool) {
+    return (actual, current != actual)
 }
 
 private func detectSizeConstraints(win: ManagedWindow, requested: CGSize) -> Bool {
@@ -43,23 +42,23 @@ private func detectSizeConstraints(win: ManagedWindow, requested: CGSize) -> Boo
     var discovered = false
 
     if dw > frameTolerance {
-        let (val, changed) = updateConstraint(current: win.maxSize?.width, actual: actual.width, unconstrained: .infinity)
-        win.maxSize = CGSize(width: val ?? .infinity, height: win.maxSize?.height ?? .infinity)
+        let (val, changed) = updateConstraint(current: win.maxSize?.width, actual: actual.width)
+        win.maxSize = CGSize(width: val, height: win.maxSize?.height ?? .infinity)
         discovered = discovered || changed
     }
     if dh > frameTolerance {
-        let (val, changed) = updateConstraint(current: win.maxSize?.height, actual: actual.height, unconstrained: .infinity)
-        win.maxSize = CGSize(width: win.maxSize?.width ?? .infinity, height: val ?? .infinity)
+        let (val, changed) = updateConstraint(current: win.maxSize?.height, actual: actual.height)
+        win.maxSize = CGSize(width: win.maxSize?.width ?? .infinity, height: val)
         discovered = discovered || changed
     }
     if -dw > frameTolerance {
-        let (val, changed) = updateConstraint(current: win.minSize?.width, actual: actual.width, unconstrained: 0)
-        win.minSize = CGSize(width: val ?? 0, height: win.minSize?.height ?? 0)
+        let (val, changed) = updateConstraint(current: win.minSize?.width, actual: actual.width)
+        win.minSize = CGSize(width: val, height: win.minSize?.height ?? 0)
         discovered = discovered || changed
     }
     if -dh > frameTolerance {
-        let (val, changed) = updateConstraint(current: win.minSize?.height, actual: actual.height, unconstrained: 0)
-        win.minSize = CGSize(width: win.minSize?.width ?? 0, height: val ?? 0)
+        let (val, changed) = updateConstraint(current: win.minSize?.height, actual: actual.height)
+        win.minSize = CGSize(width: win.minSize?.width ?? 0, height: val)
         discovered = discovered || changed
     }
 

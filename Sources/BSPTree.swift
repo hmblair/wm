@@ -53,18 +53,22 @@ indirect enum BSPTree {
 
     func computeFrames(rect: CGRect, gap: CGFloat,
                         constraints: SizeConstraints = [:]) -> [(UInt32, CGRect)] {
+        return tileFrames(rect: rect.insetBy(dx: gap / 2, dy: gap / 2),
+                          gap: gap, constraints: constraints)
+    }
+
+    private func tileFrames(rect: CGRect, gap: CGFloat,
+                            constraints: SizeConstraints) -> [(UInt32, CGRect)] {
         switch self {
         case .leaf(let id):
-            let halfGap = gap / 2
-            let tileW = rect.width - 2 * halfGap
-            let tileH = rect.height - 2 * halfGap
-            var w = tileW, h = tileH
+            let inner = rect.insetBy(dx: gap / 2, dy: gap / 2)
+            var w = inner.width, h = inner.height
             if let c = constraints[id] {
                 if let maxW = c.max?.width { w = min(w, maxW) }
                 if let maxH = c.max?.height { h = min(h, maxH) }
             }
-            let x = rect.minX + halfGap + (tileW - w) / 2
-            let y = rect.minY + halfGap + (tileH - h) / 2
+            let x = inner.minX + (inner.width - w) / 2
+            let y = inner.minY + (inner.height - h) / 2
             return [(id, CGRect(x: x, y: y, width: w, height: h))]
         case .split(let left, let right, let vertical, let ratio):
             let total = vertical ? rect.width : rect.height
@@ -74,8 +78,8 @@ indirect enum BSPTree {
                 rightRange: right.extentRange(vertical: vertical, gap: gap, constraints: constraints))
 
             let (leftRect, rightRect) = splitRects(rect: rect, vertical: vertical, at: splitPos)
-            return left.computeFrames(rect: leftRect, gap: gap, constraints: constraints)
-                 + right.computeFrames(rect: rightRect, gap: gap, constraints: constraints)
+            return left.tileFrames(rect: leftRect, gap: gap, constraints: constraints)
+                 + right.tileFrames(rect: rightRect, gap: gap, constraints: constraints)
         }
     }
 

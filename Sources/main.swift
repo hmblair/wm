@@ -27,7 +27,7 @@ if lockFD < 0 || flock(lockFD, LOCK_EX | LOCK_NB) != 0 {
 
 let verbose = CommandLine.arguments.contains("--verbose") || CommandLine.arguments.contains("-v")
 let tilingEnabled = !CommandLine.arguments.contains("--no-tile")
-let config = loadConfig()
+var config = loadConfig()
 
 // --- Global state (mutated only in executePlan) ---
 
@@ -61,6 +61,32 @@ func installSignalHandlers() {
 }
 
 installSignalHandlers()
+
+// --- Config file watcher ---
+
+var configWatcher: DispatchSourceFileSystemObject?
+
+func watchConfigFile() {
+    let dir = (Config.defaultPath as NSString).deletingLastPathComponent
+    let fd = open(dir, O_EVTONLY)
+    guard fd >= 0 else { return }
+
+    let source = DispatchSource.makeFileSystemObjectSource(
+        fileDescriptor: fd, eventMask: .write,
+        queue: .main)
+
+    source.setEventHandler {
+        let newConfig = loadConfig()
+        log("config: reloaded")
+        config = newConfig
+    }
+
+    source.setCancelHandler { close(fd) }
+    source.resume()
+    configWatcher = source
+}
+
+watchConfigFile()
 
 // --- Event tap ---
 
