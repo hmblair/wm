@@ -1,8 +1,6 @@
 # focus-follows-mouse
 
-Focus-follows-mouse for macOS tiling window managers.
-
-A lightweight Swift daemon that focuses whichever window the mouse cursor moves over, and warps the mouse to a window when focus changes via keyboard (e.g., from a tiling WM keybinding).
+A lightweight macOS daemon that provides focus-follows-mouse, a BSP tiling window manager, and a menu bar space indicator.
 
 ## Requirements
 
@@ -13,14 +11,24 @@ A lightweight Swift daemon that focuses whichever window the mouse cursor moves 
 
 ```
 make install
+make load
 ```
 
-This builds a release binary and installs it as an app bundle at `~/.local/focus-follows-mouse.app`. Override the install prefix with `PREFIX=/usr/local make install`.
+This builds a release binary, installs it as an app bundle at `~/.local/focus-follows-mouse.app`, starts it as a launchd service, and disables macOS built-in tiling and automatic Space reordering.
+
+Override the install prefix with `PREFIX=/usr/local make install`.
+
+To stop and remove:
+
+```
+make unload    # stop the service
+make uninstall # remove binary and plist
+```
 
 ## Usage
 
 ```
-focus-follows-mouse [--verbose|-v] [--dump] [--no-tile]
+focus-follows-mouse [--verbose|-v] [--dump] [--no-tile] [--version]
 ```
 
 | Flag | Description |
@@ -30,21 +38,7 @@ focus-follows-mouse [--verbose|-v] [--dump] [--no-tile]
 | `--no-tile` | Disable the built-in tiling window manager |
 | `--version` | Print version and exit |
 
-### Running as a launchd service (recommended)
-
-`make install` copies the binary and installs a launchd plist that starts the daemon at login and restarts it on crash:
-
-```
-make install
-make load
-```
-
-To stop and remove:
-
-```
-make unload    # stop the service
-make uninstall # remove binary and plist
-```
+The process runs in the foreground and exits cleanly on SIGINT/SIGTERM. When installed as a launchd service, it starts at login and restarts on crash.
 
 Logs are available via macOS unified logging:
 
@@ -52,24 +46,19 @@ Logs are available via macOS unified logging:
 log stream --predicate 'subsystem == "com.hmblair.focus-follows-mouse"' --level debug
 ```
 
-### Running manually
-
-```
-focus-follows-mouse
-```
-
-The process runs in the foreground and exits cleanly on SIGINT/SIGTERM.
-
 ## Configuration
 
-Configuration is read from `~/.config/focus-follows-mouse/config.toml`. All fields are optional and fall back to sensible defaults.
+Configuration is read from `~/.config/focus-follows-mouse/config.toml`. All fields are optional. The file is watched for changes and reloaded automatically.
 
 ```toml
-# Gap in points between tiled windows (default: 8)
+# Gap in points between tiled windows and screen edges (default: 8)
 gap = 8
 
 # How often to poll for window changes, in seconds (default: 0.016)
 poll_interval = 0.016
+
+# Show clickable space indicators in the menu bar (default: true)
+status_bar = true
 
 # Apps whose windows are completely invisible to the daemon.
 # They won't be focused, tiled, or tracked in any way.
@@ -87,26 +76,47 @@ enabled = true
 [keybindings.focus_modifier]
 cmd = true
 
-# Modifier keys for directional window swap (Cmd+Shift + arrow keys by default)
+# Modifier keys for directional swap, rotate, and move-to-space
+# (Cmd+Shift by default)
 [keybindings.swap_modifier]
+cmd = true
+shift = true
+
+# Modifier keys for move-to-space (Cmd+Shift by default)
+[keybindings.move_to_space_modifier]
 cmd = true
 shift = true
 ```
 
-### Keybindings
+## Keybindings
 
-When enabled, the daemon intercepts arrow key presses with the configured modifiers:
+When enabled, the daemon intercepts key presses with the configured modifiers:
 
 | Binding | Action |
 |---------|--------|
-| focus_modifier + arrow | Move focus to the nearest window in that direction |
-| swap_modifier + arrow | Swap the focused window with its neighbor in that direction |
+| `focus_modifier` + arrow | Move focus to the nearest window in that direction |
+| `swap_modifier` + arrow | Swap the focused window with its neighbor in that direction |
+| `swap_modifier` + R | Rotate the split orientation of the focused window's parent |
+| `move_to_space_modifier` + 1-9 | Move the focused window to the specified Space |
 
 Each modifier is a combination of `cmd`, `shift`, `ctrl`, and `option` (all `false` by default). The match is exact: only the specified modifiers must be held.
 
-## How it works
+## Features
 
-- **Mouse tracking**: A `CGEvent` tap listens for mouse movement events.
-- **Window lookup**: `CGWindowListCopyWindowInfo` provides on-screen window positions via CoreGraphics (no accessibility overhead).
-- **Focusing**: The Accessibility API (`AXUIElement`) raises and focuses the window under the cursor.
-- **Keyboard-driven focus**: When an external focus change is detected after a keypress (e.g., a WM keybinding moved focus), the mouse is warped to the newly focused window.
+### Focus follows mouse
+
+A `CGEvent` tap tracks mouse movement. When the cursor enters a window, it is raised and focused via the Accessibility API. When the cursor moves to the desktop, focus is released to Finder.
+
+### BSP tiling
+
+Windows are arranged in a binary space partition (BSP) tree. New windows are inserted and the screen is recursively split. The layout respects window size constraints: windows with a minimum or maximum size (like System Settings or App Store) are detected reactively and the BSP split ratios are adjusted so constrained windows and their neighbors tile correctly.
+
+Tiling is suspended during Mission Control and while the mouse button is held.
+
+### Status bar
+
+Clickable Space indicators appear in the menu bar showing all Spaces. The active Space is displayed in bold. Clicking a number switches to that Space.
+
+### Keyboard navigation
+
+Arrow-key bindings allow moving focus between windows, swapping window positions, rotating split orientation, and moving windows to other Spaces. The mouse is warped to the focused window after each action.
