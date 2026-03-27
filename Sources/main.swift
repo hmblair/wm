@@ -51,12 +51,10 @@ if CommandLine.arguments.contains("--dump") {
 
 // --- Signal handling ---
 
-let mainRunLoop = CFRunLoopGetCurrent()!
-
 func installSignalHandlers() {
     let handler: @convention(c) (Int32) -> Void = { sig in
         log("received signal \(sig), shutting down")
-        CFRunLoopStop(mainRunLoop)
+        DispatchQueue.main.async { NSApplication.shared.terminate(nil) }
     }
     signal(SIGINT, handler)
     signal(SIGTERM, handler)
@@ -95,5 +93,5 @@ CFRunLoopAddTimer(CFRunLoopGetCurrent(), pollTimer, .commonModes)
 
 setupStatusBar()
 log("running\(verbose ? " (verbose)" : "")")
-CFRunLoopRun()
+NSApplication.shared.run()
 log("stopped")
