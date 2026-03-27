@@ -1,6 +1,21 @@
 import Cocoa
 import ApplicationServices
 
+@discardableResult
+private func enforceTileFrames(_ tileFrames: [UInt32: CGRect], label: String = "enforce") -> Bool {
+    var newConstraint = false
+    for (id, tileFrame) in tileFrames {
+        guard let win = managedWindows[id] else { continue }
+        if !framesMatch(win.frame, tileFrame) {
+            debug("tile: \(label) [\(id)] (\(win.name)) \(formatFrame(win.frame)) → \(formatFrame(tileFrame))")
+            if setWindowFrame(win, frame: tileFrame) {
+                newConstraint = true
+            }
+        }
+    }
+    return newConstraint
+}
+
 func executePlan(_ plan: TickPlan, snap: WorldSnapshot) {
     // 1. Update internal state
     managedWindows = plan.reconciledWindows
@@ -25,12 +40,11 @@ func executePlan(_ plan: TickPlan, snap: WorldSnapshot) {
 
     // 3. Enforce tile frames (skip if mouse down or Mission Control active)
     if !snap.mouseDown && !snap.missionControlActive {
-        for (id, tileFrame) in plan.tileFrames {
-            guard let win = managedWindows[id] else { continue }
-            if !framesMatch(win.frame, tileFrame) {
-                debug("tile: enforce [\(id)] (\(win.name)) \(formatFrame(win.frame)) → \(formatFrame(tileFrame))")
-                setWindowFrame(win, frame: tileFrame)
-            }
+        let newConstraint = enforceTileFrames(plan.tileFrames)
+        if newConstraint && tilingEnabled {
+            let corrected = computeTileFrames(
+                trees: bspTrees, managedWindows: managedWindows, spaceID: snap.spaceID)
+            enforceTileFrames(corrected, label: "correct")
         }
     }
 

@@ -27,23 +27,69 @@ indirect enum BSPTree {
         }
     }
 
-    func computeFrames(rect: CGRect, gap: CGFloat) -> [(UInt32, CGRect)] {
+    typealias SizeConstraints = [UInt32: (min: CGSize?, max: CGSize?)]
+
+    private func extentRange(vertical: Bool, gap: CGFloat,
+                             constraints: SizeConstraints) -> (min: CGFloat?, max: CGFloat?) {
         switch self {
         case .leaf(let id):
-            return [(id, CGRect(x: rect.minX + gap, y: rect.minY + gap,
-                                width: rect.width - 2 * gap, height: rect.height - 2 * gap))]
-        case .split(let left, let right, let vertical, let ratio):
-            let (leftRect, rightRect): (CGRect, CGRect)
-            if vertical {
-                let leftW = rect.width * ratio
-                leftRect = CGRect(x: rect.minX, y: rect.minY, width: leftW, height: rect.height)
-                rightRect = CGRect(x: rect.minX + leftW, y: rect.minY, width: rect.width - leftW, height: rect.height)
+            guard let c = constraints[id] else { return (nil, nil) }
+            let rawMin = vertical ? c.min?.width : c.min?.height
+            let rawMax = vertical ? c.max?.width : c.max?.height
+            return (
+                rawMin.flatMap { $0 > 0 ? $0 + gap : nil },
+                rawMax.flatMap { $0 < .infinity ? $0 + gap : nil }
+            )
+        case .split(let left, let right, let v, _):
+            let l = left.extentRange(vertical: vertical, gap: gap, constraints: constraints)
+            let r = right.extentRange(vertical: vertical, gap: gap, constraints: constraints)
+            if v == vertical {
+                return combineCoaxial(l, r)
             } else {
-                let leftH = rect.height * ratio
-                leftRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: leftH)
-                rightRect = CGRect(x: rect.minX, y: rect.minY + leftH, width: rect.width, height: rect.height - leftH)
+                return combinePerpendicular(l, r)
             }
-            return left.computeFrames(rect: leftRect, gap: gap) + right.computeFrames(rect: rightRect, gap: gap)
+        }
+    }
+
+    func computeFrames(rect: CGRect, gap: CGFloat,
+                        constraints: SizeConstraints = [:]) -> [(UInt32, CGRect)] {
+        switch self {
+        case .leaf(let id):
+            let halfGap = gap / 2
+            let tileW = rect.width - 2 * halfGap
+            let tileH = rect.height - 2 * halfGap
+            var w = tileW, h = tileH
+            if let c = constraints[id] {
+                if let maxW = c.max?.width { w = min(w, maxW) }
+                if let maxH = c.max?.height { h = min(h, maxH) }
+            }
+            let x = rect.minX + halfGap + (tileW - w) / 2
+            let y = rect.minY + halfGap + (tileH - h) / 2
+            return [(id, CGRect(x: x, y: y, width: w, height: h))]
+        case .split(let left, let right, let vertical, let ratio):
+            let total = vertical ? rect.width : rect.height
+            let splitPos = constrainedSplitPos(
+                total: total, ratio: ratio,
+                leftRange: left.extentRange(vertical: vertical, gap: gap, constraints: constraints),
+                rightRange: right.extentRange(vertical: vertical, gap: gap, constraints: constraints))
+
+            let (leftRect, rightRect) = splitRects(rect: rect, vertical: vertical, at: splitPos)
+            return left.computeFrames(rect: leftRect, gap: gap, constraints: constraints)
+                 + right.computeFrames(rect: rightRect, gap: gap, constraints: constraints)
+        }
+    }
+
+    private func splitRects(rect: CGRect, vertical: Bool, at splitPos: CGFloat) -> (CGRect, CGRect) {
+        if vertical {
+            return (
+                CGRect(x: rect.minX, y: rect.minY, width: splitPos, height: rect.height),
+                CGRect(x: rect.minX + splitPos, y: rect.minY, width: rect.width - splitPos, height: rect.height)
+            )
+        } else {
+            return (
+                CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: splitPos),
+                CGRect(x: rect.minX, y: rect.minY + splitPos, width: rect.width, height: rect.height - splitPos)
+            )
         }
     }
 
@@ -63,6 +109,46 @@ indirect enum BSPTree {
         let focusedIsAlone: Bool
         let otherSideIDs: [UInt32]
     }
+
+}
+
+private typealias ExtentRange = (min: CGFloat?, max: CGFloat?)
+
+private func combineCoaxial(_ l: ExtentRange, _ r: ExtentRange) -> ExtentRange {
+    let minSum: CGFloat? = {
+        if let lv = l.min, let rv = r.min { return lv + rv }
+        return l.min ?? r.min
+    }()
+    let maxSum: CGFloat? = {
+        if let lv = l.max, let rv = r.max { return lv + rv }
+        return nil
+    }()
+    return (minSum, maxSum)
+}
+
+private func combinePerpendicular(_ l: ExtentRange, _ r: ExtentRange) -> ExtentRange {
+    let minVal: CGFloat? = {
+        if let lv = l.min, let rv = r.min { return Swift.max(lv, rv) }
+        return l.min ?? r.min
+    }()
+    let maxVal: CGFloat? = {
+        if let lv = l.max, let rv = r.max { return Swift.min(lv, rv) }
+        return l.max ?? r.max
+    }()
+    return (minVal, maxVal)
+}
+
+private func constrainedSplitPos(total: CGFloat, ratio: CGFloat,
+                                  leftRange: ExtentRange, rightRange: ExtentRange) -> CGFloat {
+    var pos = total * ratio
+    if let mv = leftRange.max, pos > mv { pos = mv }
+    if let mv = leftRange.min, pos < mv { pos = mv }
+    if let mv = rightRange.max, total - pos > mv { pos = total - mv }
+    if let mv = rightRange.min, total - pos < mv { pos = total - mv }
+    return pos
+}
+
+extension BSPTree {
 
     func findCrossingSplit(windowID: UInt32, direction: Direction) -> CrossingResult? {
         guard case .split(let left, let right, let vertical, _) = self else { return nil }

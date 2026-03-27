@@ -26,17 +26,13 @@ func computeTileFrames(
 
     for (key, tree) in trees where key.spaceID == spaceID {
         guard let screen = screenForDisplayID(key.displayID) else { continue }
-        let rect = visibleFrame(for: screen)
-        for (id, tileRect) in tree.computeFrames(rect: rect, gap: config.gap) {
-            if let actualSize = managedWindows[id]?.actualSize {
-                let w = min(actualSize.width, tileRect.width)
-                let h = min(actualSize.height, tileRect.height)
-                let x = tileRect.origin.x + (tileRect.width - w) / 2
-                let y = tileRect.origin.y + (tileRect.height - h) / 2
-                tileFrames[id] = CGRect(x: x, y: y, width: w, height: h)
-            } else {
-                tileFrames[id] = tileRect
-            }
+        let rect = visibleFrame(for: screen).insetBy(dx: config.gap / 2, dy: config.gap / 2)
+        var constraints: [UInt32: (min: CGSize?, max: CGSize?)] = [:]
+        for (id, win) in managedWindows where win.minSize != nil || win.maxSize != nil {
+            constraints[id] = (min: win.minSize, max: win.maxSize)
+        }
+        for (id, tileRect) in tree.computeFrames(rect: rect, gap: config.gap, constraints: constraints) {
+            tileFrames[id] = tileRect
         }
     }
 
@@ -94,7 +90,7 @@ func computeBSPTrees(
         let orderedWindows = orderedIDs.compactMap { managedWindows[$0] }
         debug("tile: rebuild BSP display \(key.displayID) space \(key.spaceID) — \(orderedIDs.count) windows: \(orderedIDs)")
         if let screen = screenForDisplayID(key.displayID) {
-            let rect = visibleFrame(for: screen)
+            let rect = visibleFrame(for: screen).insetBy(dx: config.gap / 2, dy: config.gap / 2)
             trees[key] = buildBSPTreeFitting(windows: orderedWindows, rect: rect, gap: config.gap)
         } else {
             trees[key] = buildBSPTree(windowIDs: orderedIDs, splitVertical: true)
