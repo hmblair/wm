@@ -2,6 +2,9 @@ import Cocoa
 
 private var statusItem: NSStatusItem?
 private var stackView: NSStackView?
+private var lastRenderedSpaces: [CGSSpaceID] = []
+private var lastRenderedActive: CGSSpaceID = 0
+private var lastRenderedOccupied: Set<CGSSpaceID> = []
 
 func setupStatusBar() {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -18,14 +21,13 @@ func setupStatusBar() {
         stack.centerYAnchor.constraint(equalTo: statusItem!.button!.centerYAnchor),
     ])
 
-    updateStatusBar()
+    updateStatusBar(activeSpace: activeSpaceID())
 }
 
-func updateStatusBar() {
+func updateStatusBar(activeSpace: CGSSpaceID) {
     guard let stack = stackView else { return }
 
     let spaces = orderedSpaceIDs()
-    let active = activeSpaceID()
 
     var occupiedSpaces: Set<CGSSpaceID> = []
     for (_, win) in managedWindows {
@@ -33,6 +35,15 @@ func updateStatusBar() {
             occupiedSpaces.insert(space)
         }
     }
+
+    // Skip update if nothing changed
+    guard spaces != lastRenderedSpaces
+       || activeSpace != lastRenderedActive
+       || occupiedSpaces != lastRenderedOccupied else { return }
+
+    lastRenderedSpaces = spaces
+    lastRenderedActive = activeSpace
+    lastRenderedOccupied = occupiedSpaces
 
     // Add/remove labels to match space count
     while stack.arrangedSubviews.count < spaces.count {
@@ -46,7 +57,7 @@ func updateStatusBar() {
     }
 
     for (i, space) in spaces.enumerated() {
-        let isActive = space == active
+        let isActive = space == activeSpace
         let isOccupied = occupiedSpaces.contains(space)
 
         let color: NSColor

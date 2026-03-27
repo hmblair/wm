@@ -108,7 +108,7 @@ func tick() {
     let snap = readWorld()
     let plan = computePlan(snap)
     executePlan(plan, snap: snap)
-    if config.statusBar { updateStatusBar() }
+    if config.statusBar { updateStatusBar(activeSpace: snap.spaceID) }
 }
 
 let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
