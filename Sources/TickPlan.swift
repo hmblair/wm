@@ -9,6 +9,7 @@ struct WorldSnapshot {
     let focusedWindow: Window?
     let mousePosition: CGPoint
     let mouseDown: Bool
+    let missionControlActive: Bool
     let commands: [PendingKeyCommand]
     let moveCommands: [Int]
     let rotate: Bool
@@ -22,12 +23,14 @@ func readWorld() -> WorldSnapshot {
     let rotate = pendingRotate
     pendingRotate = false
     let cgWindows = fetchCGWindowList()
+    let missionControl = cgWindows.contains { $0.name == "Dock" && $0.layer == 18 }
     return WorldSnapshot(
         cgWindows: cgWindows,
         spaceID: activeSpaceID(),
-        focusedWindow: getFocusedWindow(cgWindows: cgWindows),
+        focusedWindow: missionControl ? nil : getFocusedWindow(cgWindows: cgWindows),
         mousePosition: lastMousePosition,
         mouseDown: NSEvent.pressedMouseButtons & 0x1 != 0,
+        missionControlActive: missionControl,
         commands: commands,
         moveCommands: moves,
         rotate: rotate

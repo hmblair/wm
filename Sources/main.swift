@@ -82,7 +82,7 @@ func tick() {
     let snap = readWorld()
     let plan = computePlan(snap)
     executePlan(plan, snap: snap)
-    updateStatusBar()
+    if config.statusBar { updateStatusBar() }
 }
 
 let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
@@ -91,7 +91,7 @@ let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
 }
 CFRunLoopAddTimer(CFRunLoopGetCurrent(), pollTimer, .commonModes)
 
-setupStatusBar()
+if config.statusBar { setupStatusBar() }
 log("running\(verbose ? " (verbose)" : "")")
 NSApplication.shared.run()
 log("stopped")

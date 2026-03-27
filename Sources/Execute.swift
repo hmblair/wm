@@ -23,8 +23,8 @@ func executePlan(_ plan: TickPlan, snap: WorldSnapshot) {
         moveWindowToSpace(axWindow: move.axWindow, spaceIndex: move.spaceIndex)
     }
 
-    // 3. Enforce tile frames (skip if mouse down)
-    if !snap.mouseDown {
+    // 3. Enforce tile frames (skip if mouse down or Mission Control active)
+    if !snap.mouseDown && !snap.missionControlActive {
         for (id, tileFrame) in plan.tileFrames {
             guard let win = managedWindows[id] else { continue }
             if !framesMatch(win.frame, tileFrame) {

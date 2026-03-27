@@ -54,19 +54,19 @@ func updateStatusBar() {
         else if isOccupied { color = NSColor.labelColor }
         else { color = NSColor.tertiaryLabelColor }
 
-        let weight: NSFont.Weight = isActive ? .bold : .regular
+        let weight: NSFont.Weight = isActive ? .medium : .regular
         let label = stack.arrangedSubviews[i] as! SpaceButton
         label.attributedTitle = NSAttributedString(
             string: "\(i + 1)",
             attributes: [
                 .foregroundColor: color,
-                .font: NSFont.systemFont(ofSize: 16, weight: weight),
+                .font: NSFont.systemFont(ofSize: 13, weight: weight),
             ]
         )
         label.spaceIndex = i
     }
 
-    statusItem?.length = stack.fittingSize.width + 8
+    statusItem?.length = stack.fittingSize.width + 2
 }
 
 func switchToSpace(_ index: Int) {
