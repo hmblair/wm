@@ -110,6 +110,7 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
            let rotated = tree.rotatingParent(of: managed.id) {
             debug("cmd: rotate parent of [\(managed.id)] (\(managed.name))")
             plan.updatedTrees[key] = rotated
+            plan.warpToWindow = managed.id
         }
     }
 
