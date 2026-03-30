@@ -260,6 +260,22 @@ private func buildTemplate(count: Int, splitMask: UInt32) -> BSPTree {
     return build(count, parentVertical: nil)
 }
 
+/// Check that every split whose children are both leaves uses the preferred orientation.
+private func respectsPreference(_ tree: BSPTree, prefer: SplitPreference) -> Bool {
+    switch tree {
+    case .leaf: return true
+    case .split(let l, let r, let v, _):
+        if case .leaf = l, case .leaf = r {
+            switch prefer {
+            case .none: return true
+            case .vertical: return v
+            case .horizontal: return !v
+            }
+        }
+        return respectsPreference(l, prefer: prefer) && respectsPreference(r, prefer: prefer)
+    }
+}
+
 private func alternates(_ tree: BSPTree, parentVertical: Bool? = nil) -> Bool {
     switch tree {
     case .leaf: return true
@@ -323,7 +339,7 @@ private func greedyMatch(tileFrames: [CGRect], windowFrames: [CGRect]) -> (assig
 }
 
 /// Build the BSP tree that best matches the current window positions.
-func buildBSPTreeFitting(windows: [ManagedWindow], rect: CGRect, gap: CGFloat) -> BSPTree? {
+func buildBSPTreeFitting(windows: [ManagedWindow], rect: CGRect, gap: CGFloat, prefer: SplitPreference = .none) -> BSPTree? {
     let n = windows.count
     guard n > 0 else { return nil }
     if n == 1 { return .leaf(id: windows[0].id) }
@@ -337,9 +353,10 @@ func buildBSPTreeFitting(windows: [ManagedWindow], rect: CGRect, gap: CGFloat) -
 
     for mask in 0..<UInt32(configCount) {
         let template = buildTemplate(count: n, splitMask: mask)
-        guard alternates(template) else { continue }
+        guard alternates(template), respectsPreference(template, prefer: prefer) else { continue }
         let tileFrames = template.computeFrames(rect: rect, gap: gap).map { $0.1 }
         let (assignment, cost) = greedyMatch(tileFrames: tileFrames, windowFrames: windowFrames)
+        debug("tile: topology mask=\(mask) cost=\(cost)")
         if cost < bestCost {
             bestCost = cost
             let orderedIDs = (0..<n).map { windows[assignment[$0]].id }

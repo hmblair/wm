@@ -37,12 +37,19 @@ struct KeybindingsConfig: Codable {
     }
 }
 
+enum SplitPreference: String, Codable {
+    case none
+    case vertical
+    case horizontal
+}
+
 struct Config: Codable {
     var gap: CGFloat = 8
     var pollInterval: CFTimeInterval = 0.016
     var ignoredApps: Set<String> = []
     var excludedApps: Set<String> = []
     var statusBar: Bool = true
+    var prefer: SplitPreference = .none
     var keybindings: KeybindingsConfig = KeybindingsConfig()
 
     static let defaultPath: String = {
@@ -71,6 +78,9 @@ struct Config: Codable {
         if let v = try? container.decode(Bool.self, forKey: .statusBar) {
             statusBar = v
         }
+        if let v = try? container.decode(SplitPreference.self, forKey: .prefer) {
+            prefer = v
+        }
         if let v = try? container.decode(KeybindingsConfig.self, forKey: .keybindings) {
             keybindings = v
         }
@@ -82,6 +92,7 @@ struct Config: Codable {
         case ignoredApps = "ignored_apps"
         case excludedApps = "excluded_apps"
         case statusBar = "status_bar"
+        case prefer
         case keybindings
     }
 }
