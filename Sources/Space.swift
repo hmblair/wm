@@ -40,19 +40,28 @@ func spaceForWindow(_ windowID: UInt32) -> CGSSpaceID? {
     return first
 }
 
-func orderedSpaceIDs() -> [CGSSpaceID] {
+struct SpaceInfo {
+    let id: CGSSpaceID
+    let isFullScreen: Bool
+}
+
+func orderedSpaces() -> [SpaceInfo] {
     guard let displays = _SLSCopyManagedDisplaySpaces(slsConnectionID) as? [[String: Any]] else { return [] }
-    var result: [CGSSpaceID] = []
+    var result: [SpaceInfo] = []
     for display in displays {
         guard let spaces = display["Spaces"] as? [[String: Any]] else { continue }
         for space in spaces {
-            guard let type = space["type"] as? Int, type == 0 else { continue }
+            guard let type = space["type"] as? Int, type == 0 || type == 4 else { continue }
             if let id = space["id64"] as? CGSSpaceID {
-                result.append(id)
+                result.append(SpaceInfo(id: id, isFullScreen: type == 4))
             }
         }
     }
     return result
+}
+
+func orderedSpaceIDs() -> [CGSSpaceID] {
+    return orderedSpaces().map { $0.id }
 }
 
 let spaceKeyCodes: [UInt16] = [18, 19, 20, 21, 23, 22, 26, 28, 25]
@@ -65,6 +74,21 @@ func postKeyEvent(keyCode: UInt16, flags: CGEventFlags = .maskControl) {
     keyUp.flags = flags
     keyDown.post(tap: .cghidEventTap)
     keyUp.post(tap: .cghidEventTap)
+}
+
+func appNameForSpace(_ spaceID: CGSSpaceID) -> String? {
+    guard let infoList = CGWindowListCopyWindowInfo(
+        [.optionAll, .excludeDesktopElements], kCGNullWindowID
+    ) as? [[String: Any]] else { return nil }
+
+    for info in infoList {
+        guard let wid = info[kCGWindowNumber as String] as? UInt32,
+              let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
+              let name = info[kCGWindowOwnerName as String] as? String
+        else { continue }
+        if spaceForWindow(wid) == spaceID { return name }
+    }
+    return nil
 }
 
 func moveWindowToSpace(axWindow: AXUIElement, spaceIndex: Int) {

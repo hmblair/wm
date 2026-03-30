@@ -27,7 +27,8 @@ func setupStatusBar() {
 func updateStatusBar(activeSpace: CGSSpaceID) {
     guard let stack = stackView else { return }
 
-    let spaces = orderedSpaceIDs()
+    let spaces = orderedSpaces()
+    let spaceIDs = spaces.map { $0.id }
 
     var occupiedSpaces: Set<CGSSpaceID> = []
     for (_, win) in managedWindows {
@@ -37,11 +38,11 @@ func updateStatusBar(activeSpace: CGSSpaceID) {
     }
 
     // Skip update if nothing changed
-    guard spaces != lastRenderedSpaces
+    guard spaceIDs != lastRenderedSpaces
        || activeSpace != lastRenderedActive
        || occupiedSpaces != lastRenderedOccupied else { return }
 
-    lastRenderedSpaces = spaces
+    lastRenderedSpaces = spaceIDs
     lastRenderedActive = activeSpace
     lastRenderedOccupied = occupiedSpaces
 
@@ -56,19 +57,28 @@ func updateStatusBar(activeSpace: CGSSpaceID) {
         view.removeFromSuperview()
     }
 
+    var desktopNumber = 1
     for (i, space) in spaces.enumerated() {
-        let isActive = space == activeSpace
-        let isOccupied = occupiedSpaces.contains(space)
+        let isActive = space.id == activeSpace
+        let isOccupied = occupiedSpaces.contains(space.id)
 
         let color: NSColor
         if isActive { color = NSColor.labelColor }
         else if isOccupied { color = NSColor.labelColor }
         else { color = NSColor.tertiaryLabelColor }
 
+        let title: String
+        if space.isFullScreen {
+            title = appNameForSpace(space.id).flatMap { $0.first.map(String.init) } ?? "F"
+        } else {
+            title = "\(desktopNumber)"
+            desktopNumber += 1
+        }
+
         let weight: NSFont.Weight = isActive ? .medium : .regular
         let label = stack.arrangedSubviews[i] as! SpaceButton
         label.attributedTitle = NSAttributedString(
-            string: "\(i + 1)",
+            string: title,
             attributes: [
                 .foregroundColor: color,
                 .font: NSFont.systemFont(ofSize: 13, weight: weight),
