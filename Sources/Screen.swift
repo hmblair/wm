@@ -16,8 +16,11 @@ func screenForDisplayID(_ did: CGDirectDisplayID) -> NSScreen? {
 }
 
 func visibleFrame(for screen: NSScreen) -> CGRect {
-    let full = screen.frame
     let visible = screen.visibleFrame
-    let y = full.height - visible.maxY
+    // AppKit's global coordinate origin is the bottom-left of the primary screen.
+    // Quartz/CG's origin is the top-left of the primary screen. Flip around the
+    // primary screen's height so external monitors get the correct y-offset.
+    let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
+    let y = primaryHeight - visible.maxY
     return CGRect(x: visible.minX, y: y, width: visible.width, height: visible.height)
 }
