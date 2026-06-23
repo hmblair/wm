@@ -79,7 +79,6 @@ func runStatus() -> Never {
 
     // Spaces: desktops numbered, fullscreen shown by app initial, active bracketed.
     var desktop = 0
-    var activeLabel = "?"
     var rendered: [String] = []
     for sp in spaces {
         let label: String
@@ -90,14 +89,12 @@ func runStatus() -> Never {
             label = "\(desktop)"
         }
         if sp.id == active {
-            activeLabel = label
             rendered.append(Style.bold(Style.green("[\(label)]")))
         } else {
-            rendered.append(Style.grey(" \(label) "))
+            rendered.append(Style.grey(label))
         }
     }
-    row("Active space", "\(activeLabel)\(Style.grey(" of \(spaces.count)"))")
-    row("Spaces", rendered.joined())
+    row("Spaces", rendered.joined(separator: " "))
 
     let screens = NSScreen.screens
     let displays = screens.map { s -> String in
