@@ -1,13 +1,47 @@
 import Cocoa
 import CoreGraphics
 
-// --- Argument parsing ---
+// --- Argument parsing & CLI subcommands ---
+
+func printUsage(_ stream: UnsafeMutablePointer<FILE> = stdout) {
+    fputs("""
+    usage: wm [command] [flags]
+
+    commands:
+      status           Print daemon status, open spaces, and config
+      help             Show this help
+
+    flags (daemon):
+      --verbose, -v    Print timestamped debug output to stderr
+      --dump           Dump window info for the current space and exit
+      --no-tile        Disable the tiling window manager
+      --version        Print version and exit
+
+    With no command, wm runs as the window-manager daemon.
+
+    """, stream)
+}
+
+// CLI subcommands run and exit before the daemon starts.
+if CommandLine.arguments.count > 1, !CommandLine.arguments[1].hasPrefix("-") {
+    switch CommandLine.arguments[1] {
+    case "status": runStatus()
+    case "help":   printUsage(); exit(0)
+    default:
+        fputs("unknown command: \(CommandLine.arguments[1])\n", stderr)
+        printUsage(stderr); exit(1)
+    }
+}
+
+if CommandLine.arguments.contains("-h") || CommandLine.arguments.contains("--help") {
+    printUsage(); exit(0)
+}
 
 let knownArgs: Set<String> = ["--verbose", "-v", "--dump", "--no-tile", "--version"]
 for arg in CommandLine.arguments.dropFirst() {
     if !knownArgs.contains(arg) {
-        fputs("unknown argument: \(arg)\nusage: wm [--verbose|-v] [--dump] [--no-tile] [--version]\n", stderr)
-        exit(1)
+        fputs("unknown argument: \(arg)\n", stderr)
+        printUsage(stderr); exit(1)
     }
 }
 
@@ -18,12 +52,14 @@ if CommandLine.arguments.contains("--version") {
 
 // --- Single instance guard ---
 
-let lockPath = "/tmp/wm.lock"
-let lockFD = open(lockPath, O_CREAT | O_RDWR, 0o600)
+let lockFD = open(wmLockPath, O_CREAT | O_RDWR, 0o600)
 if lockFD < 0 || flock(lockFD, LOCK_EX | LOCK_NB) != 0 {
     fputs("wm: another instance is already running\n", stderr)
     exit(1)
 }
+// Record our pid so `wm status` (a separate process) can report it.
+ftruncate(lockFD, 0)
+_ = "\(getpid())\n".withCString { write(lockFD, $0, strlen($0)) }
 
 let verbose = CommandLine.arguments.contains("--verbose") || CommandLine.arguments.contains("-v")
 let tilingEnabled = !CommandLine.arguments.contains("--no-tile")

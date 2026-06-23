@@ -28,8 +28,15 @@ make uninstall # remove binary and plist
 ## Usage
 
 ```
-wm [--verbose|-v] [--dump] [--no-tile] [--version]
+wm [command] [flags]
 ```
+
+With no command, `wm` runs as the window-manager daemon. The process runs in the foreground and exits cleanly on SIGINT/SIGTERM. When installed as a launchd service, it starts at login and restarts on crash.
+
+| Command | Description |
+|---------|-------------|
+| `status` | Print daemon status, open Spaces, displays, and config (colorized) |
+| `help` | Show usage |
 
 | Flag | Description |
 |------|-------------|
@@ -38,7 +45,7 @@ wm [--verbose|-v] [--dump] [--no-tile] [--version]
 | `--no-tile` | Disable the built-in tiling window manager |
 | `--version` | Print version and exit |
 
-The process runs in the foreground and exits cleanly on SIGINT/SIGTERM. When installed as a launchd service, it starts at login and restarts on crash.
+`wm status` reports whether the daemon is running (and its pid), whether auto-start and Accessibility are enabled, the open Spaces with the active one highlighted, attached displays, and the loaded configuration. Colors are emitted only when stdout is a terminal.
 
 Logs are available via macOS unified logging:
 
