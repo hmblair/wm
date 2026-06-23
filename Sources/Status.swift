@@ -1,4 +1,5 @@
 import Cocoa
+import CoreGraphics
 
 // Shared with main.swift's single-instance guard.
 let wmLockPath = "/tmp/wm.lock"
@@ -123,7 +124,14 @@ func runStatus() -> Never {
 
     let screens = NSScreen.screens
     let displays = screens.map { s -> String in
-        let res = "\(Int(s.frame.width))×\(Int(s.frame.height))"
+        let lw = Int(s.frame.width), lh = Int(s.frame.height)
+        var res = "\(lw)×\(lh)"
+        // On retina/scaled displays the frame is in logical points; show the
+        // true backing pixels from the current mode, with the logical size grey.
+        if let mode = CGDisplayCopyDisplayMode(displayIDForScreen(s)),
+           mode.pixelWidth != lw || mode.pixelHeight != lh {
+            res = "\(mode.pixelWidth)×\(mode.pixelHeight)\(Style.grey(" (\(lw)×\(lh))"))"
+        }
         return s == screens.first ? "\(res)\(Style.grey(" primary"))" : res
     }.joined(separator: Style.grey(", "))
     row("Displays", "\(screens.count)  \(Style.grey("·"))  \(displays)")
