@@ -167,13 +167,16 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
         computeMouseFocus(snap: snap, plan: &plan)
     }
 
-    // 8. External focus tracking
+    // 8. External focus tracking — when focus moves to a managed window outside
+    //    our control (e.g. Cmd+Tab), warp the mouse to it so focus-follows-mouse
+    //    doesn't immediately steal it back. Only follow managed windows: a modal
+    //    sheet or dialog is unmanaged, and warping to its frame would snap the
+    //    cursor to the center of the subwindow whenever the user just moves the
+    //    mouse toward the parent window.
     if plan.focusAction == nil && plan.warpTo == nil,
        let focused = snap.focusedWindow,
-       focused.id != lastFocusedWindow && lastFocusedWindow != 0 {
-        let frame = plan.tileFrames[focused.id]
-            ?? plan.reconciledWindows[focused.id]?.frame
-            ?? focused.frame
+       focused.id != lastFocusedWindow && lastFocusedWindow != 0,
+       let frame = plan.tileFrames[focused.id] ?? plan.reconciledWindows[focused.id]?.frame {
         plan.warpTo = frame
         plan.newLastFocusedWindow = focused.id
     }
