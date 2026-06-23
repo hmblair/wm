@@ -43,10 +43,19 @@ func computeFocus(
 func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
     let pos = snap.mousePosition
 
-    // Find the topmost window under the cursor (CG list is z-ordered)
-    guard let hit = snap.cgWindows.first(where: { $0.frame.contains(pos) }) else {
-        // Mouse over desktop
-        if lastFocusedWindow != 0 {
+    // Find the topmost real window under the cursor (CG list is z-ordered).
+    // Restrict to standard app windows (layer 0) and currently-managed windows
+    // so transient system overlays — e.g. the Dock's full-screen layer-20
+    // window that appears after `killall Dock` during install — don't shadow
+    // the hit-test and block focus until a Space switch clears them.
+    guard let hit = snap.cgWindows.first(where: {
+        $0.frame.contains(pos) && ($0.layer == 0 || plan.reconciledWindows[$0.id] != nil)
+    }) else {
+        // No real window under the cursor. If a system overlay (menu bar, Dock,
+        // Control Center, …) occupies this spot, leave focus alone — we're not
+        // over the desktop. Only unfocus when nothing at all is under the cursor.
+        let overOverlay = snap.cgWindows.contains { $0.frame.contains(pos) }
+        if !overOverlay && lastFocusedWindow != 0 {
             let managedIDs = plan.reconciledWindows.keys.sorted()
             let cgSummary = snap.cgWindows.prefix(8).map {
                 "[\($0.id)](\($0.name) L\($0.layer) \(formatFrame($0.frame)))"

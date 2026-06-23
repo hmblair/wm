@@ -24,11 +24,18 @@ func readWorld() -> WorldSnapshot {
     pendingRotate = false
     let cgWindows = fetchCGWindowList()
     let missionControl = cgWindows.contains { $0.name == "Dock" && $0.layer == 18 }
+    // Poll the live cursor position rather than relying solely on the event
+    // tap's mouseMoved events. After a reinstall the re-signed binary's event
+    // delivery can take ~20s to be re-validated by the system, but polling the
+    // position needs no special permission and works the moment the loop runs,
+    // so focus-follows-mouse is responsive immediately. The tap still maintains
+    // lastMousePosition as a fallback.
+    let mousePosition = CGEvent(source: nil)?.location ?? lastMousePosition
     return WorldSnapshot(
         cgWindows: cgWindows,
         spaceID: activeSpaceID(),
         focusedWindow: missionControl ? nil : getFocusedWindow(cgWindows: cgWindows),
-        mousePosition: lastMousePosition,
+        mousePosition: mousePosition,
         mouseDown: NSEvent.pressedMouseButtons & 0x1 != 0,
         missionControlActive: missionControl,
         commands: commands,
