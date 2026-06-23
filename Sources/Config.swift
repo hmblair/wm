@@ -54,7 +54,7 @@ struct Config: Codable {
 
     static let defaultPath: String = {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return "\(home)/.config/focus-follows-mouse/config.toml"
+        return "\(home)/.config/wm/config.toml"
     }()
 
     init() {}

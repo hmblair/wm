@@ -1,9 +1,11 @@
 PREFIX ?= $(HOME)/.local
-APP_NAME = focus-follows-mouse.app
+APP_NAME = wm.app
 APP_DIR = $(PREFIX)/$(APP_NAME)
-BINARY = $(APP_DIR)/Contents/MacOS/focus-follows-mouse
+BINARY = $(APP_DIR)/Contents/MacOS/wm
+# Local self-signed code-signing certificate name. Left as-is so existing
+# installs keep signing; change it only if you create a cert with a new name.
 SIGNING_IDENTITY ?= focus-follows-mouse
-PLIST_NAME = com.hmblair.focus-follows-mouse.plist
+PLIST_NAME = com.hmblair.wm.plist
 LAUNCHD_DIR = $(HOME)/Library/LaunchAgents
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "unknown")
 VERSION_FILE = Sources/Version.swift
@@ -19,7 +21,7 @@ build: $(VERSION_FILE)
 
 install: build
 	@mkdir -p $(APP_DIR)/Contents/MacOS
-	cp .build/release/focus-follows-mouse $(BINARY)
+	cp .build/release/wm $(BINARY)
 	cp resources/Info.plist $(APP_DIR)/Contents/Info.plist
 	codesign --force --sign "$(SIGNING_IDENTITY)" $(APP_DIR)
 	@mkdir -p $(LAUNCHD_DIR)

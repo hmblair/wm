@@ -6,22 +6,22 @@ import CoreGraphics
 let knownArgs: Set<String> = ["--verbose", "-v", "--dump", "--no-tile", "--version"]
 for arg in CommandLine.arguments.dropFirst() {
     if !knownArgs.contains(arg) {
-        fputs("unknown argument: \(arg)\nusage: focus-follows-mouse [--verbose|-v] [--dump] [--no-tile] [--version]\n", stderr)
+        fputs("unknown argument: \(arg)\nusage: wm [--verbose|-v] [--dump] [--no-tile] [--version]\n", stderr)
         exit(1)
     }
 }
 
 if CommandLine.arguments.contains("--version") {
-    print("focus-follows-mouse \(appVersion)")
+    print("wm \(appVersion)")
     exit(0)
 }
 
 // --- Single instance guard ---
 
-let lockPath = "/tmp/focus-follows-mouse.lock"
+let lockPath = "/tmp/wm.lock"
 let lockFD = open(lockPath, O_CREAT | O_RDWR, 0o600)
 if lockFD < 0 || flock(lockFD, LOCK_EX | LOCK_NB) != 0 {
-    fputs("focus-follows-mouse: another instance is already running\n", stderr)
+    fputs("wm: another instance is already running\n", stderr)
     exit(1)
 }
 

@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.hmblair.focus-follows-mouse</string>
+    <string>com.hmblair.wm</string>
     <key>CFBundleName</key>
-    <string>focus-follows-mouse</string>
+    <string>wm</string>
     <key>CFBundleExecutable</key>
-    <string>focus-follows-mouse</string>
+    <string>wm</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSUIElement</key>

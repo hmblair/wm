@@ -1,6 +1,6 @@
-# focus-follows-mouse
+# wm
 
-A lightweight macOS daemon that provides focus-follows-mouse, a BSP tiling window manager, and a menu bar space indicator.
+A lightweight macOS daemon that provides focus-follows-mouse behavior, a BSP tiling window manager, and a menu bar space indicator.
 
 ## Requirements
 
@@ -14,7 +14,7 @@ make install
 make load
 ```
 
-This builds a release binary, installs it as an app bundle at `~/.local/focus-follows-mouse.app`, starts it as a launchd service, and disables macOS built-in tiling and automatic Space reordering.
+This builds a release binary, installs it as an app bundle at `~/.local/wm.app`, starts it as a launchd service, and disables macOS built-in tiling and automatic Space reordering.
 
 Override the install prefix with `PREFIX=/usr/local make install`.
 
@@ -28,7 +28,7 @@ make uninstall # remove binary and plist
 ## Usage
 
 ```
-focus-follows-mouse [--verbose|-v] [--dump] [--no-tile] [--version]
+wm [--verbose|-v] [--dump] [--no-tile] [--version]
 ```
 
 | Flag | Description |
@@ -43,12 +43,12 @@ The process runs in the foreground and exits cleanly on SIGINT/SIGTERM. When ins
 Logs are available via macOS unified logging:
 
 ```
-log stream --predicate 'subsystem == "com.hmblair.focus-follows-mouse"' --level debug
+log stream --predicate 'subsystem == "com.hmblair.wm"' --level debug
 ```
 
 ## Configuration
 
-Configuration is read from `~/.config/focus-follows-mouse/config.toml`. All fields are optional. The file is watched for changes and reloaded automatically.
+Configuration is read from `~/.config/wm/config.toml`. All fields are optional. The file is watched for changes and reloaded automatically.
 
 ```toml
 # Gap in points between tiled windows and screen edges (default: 8)
@@ -64,7 +64,7 @@ status_bar = true
 # They won't be focused, tiled, or tracked in any way.
 ignored_apps = ["borders", "Hammerspoon", "Alfred", "Raycast"]
 
-# Apps that participate in focus-follows-mouse but are excluded
+# Apps that participate in focus-follows-mouse behavior but are excluded
 # from tiling (their windows keep whatever size/position they have).
 excluded_apps = ["Stickies"]
 

@@ -1,6 +1,6 @@
 import os
 
-private let logger = Logger(subsystem: "com.hmblair.focus-follows-mouse", category: "general")
+private let logger = Logger(subsystem: "com.hmblair.wm", category: "general")
 
 private func emit(_ msg: String, level: OSLogType = .info, alwaysStderr: Bool = false) {
     logger.log(level: level, "\(msg, privacy: .public)")

@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.hmblair.focus-follows-mouse</string>
+    <string>com.hmblair.wm</string>
     <key>ProgramArguments</key>
     <array>
         <string>__BINARY_PATH__</string>

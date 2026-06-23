@@ -28,7 +28,7 @@ func readWorld() -> WorldSnapshot {
     // tap's mouseMoved events. After a reinstall the re-signed binary's event
     // delivery can take ~20s to be re-validated by the system, but polling the
     // position needs no special permission and works the moment the loop runs,
-    // so focus-follows-mouse is responsive immediately. The tap still maintains
+    // so focus-follows-mouse behavior is responsive immediately. The tap still maintains
     // lastMousePosition as a fallback.
     let mousePosition = CGEvent(source: nil)?.location ?? lastMousePosition
     return WorldSnapshot(
@@ -168,8 +168,8 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
     }
 
     // 8. External focus tracking — when focus moves to a managed window outside
-    //    our control (e.g. Cmd+Tab), warp the mouse to it so focus-follows-mouse
-    //    doesn't immediately steal it back. Only follow managed windows: a modal
+    //    our control (e.g. Cmd+Tab), warp the mouse to it so the focus-follows-mouse
+    //    pass doesn't immediately steal it back. Only follow managed windows: a modal
     //    sheet or dialog is unmanaged, and warping to its frame would snap the
     //    cursor to the center of the subwindow whenever the user just moves the
     //    mouse toward the parent window.
