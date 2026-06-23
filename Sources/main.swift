@@ -1,5 +1,6 @@
 import Cocoa
 import CoreGraphics
+import ApplicationServices
 
 // --- Argument parsing & CLI subcommands ---
 
@@ -57,13 +58,18 @@ if lockFD < 0 || flock(lockFD, LOCK_EX | LOCK_NB) != 0 {
     fputs("wm: another instance is already running\n", stderr)
     exit(1)
 }
-// Record our pid so `wm status` (a separate process) can report it.
-ftruncate(lockFD, 0)
-_ = "\(getpid())\n".withCString { write(lockFD, $0, strlen($0)) }
 
 let verbose = CommandLine.arguments.contains("--verbose") || CommandLine.arguments.contains("-v")
 let tilingEnabled = !CommandLine.arguments.contains("--no-tile")
 var config = loadConfig()
+
+// Record runtime info in the lock file so `wm status` (a separate process) can
+// report the daemon's pid, Accessibility grant, and tiling mode. The CLI can't
+// query the daemon's Accessibility itself: AXIsProcessTrusted reflects the
+// invoking process, not the launchd-launched app, so only the daemon knows.
+let lockInfo = "pid=\(getpid())\naccessibility=\(AXIsProcessTrusted() ? 1 : 0)\ntiling=\(tilingEnabled ? 1 : 0)\n"
+ftruncate(lockFD, 0)
+_ = lockInfo.withCString { write(lockFD, $0, strlen($0)) }
 
 // --- Global state (mutated only in executePlan) ---
 

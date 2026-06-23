@@ -1,5 +1,4 @@
 import Cocoa
-import ApplicationServices
 
 // Shared with main.swift's single-instance guard.
 let wmLockPath = "/tmp/wm.lock"
@@ -20,35 +19,53 @@ private enum Style {
 
 // MARK: - Daemon detection via the single-instance lock
 
+private struct DaemonInfo {
+    var running = false
+    var pid: pid_t?
+    var accessibility: Bool?  // nil when unknown
+    var tiling: Bool?
+}
+
 /// The daemon holds an exclusive flock on the lock file for its lifetime and
-/// writes its pid there. A separate process can therefore tell whether the
-/// daemon is running (the lock can't be acquired) and read its pid.
-private func daemonStatus() -> (running: Bool, pid: pid_t?) {
+/// records its pid, Accessibility grant, and tiling mode there as key=value
+/// lines. A separate process can therefore tell whether the daemon is running
+/// (the lock can't be acquired) and read its self-reported state.
+private func daemonStatus() -> DaemonInfo {
+    var info = DaemonInfo()
     let fd = open(wmLockPath, O_RDWR)
-    guard fd >= 0 else { return (false, nil) }
+    guard fd >= 0 else { return info }
     defer { close(fd) }
 
     if flock(fd, LOCK_EX | LOCK_NB) == 0 {
         flock(fd, LOCK_UN)
-        return (false, nil) // acquired the lock → no daemon is holding it
+        return info // acquired the lock → no daemon is holding it
     }
+    info.running = true
 
-    var buf = [CChar](repeating: 0, count: 32)
-    let n = pread(fd, &buf, 31, 0)
-    if n > 0 {
-        buf[Int(n)] = 0
-        if let pid = pid_t(String(cString: buf).trimmingCharacters(in: .whitespacesAndNewlines)),
-           pid > 0 {
-            return (true, pid)
+    var buf = [CChar](repeating: 0, count: 256)
+    let n = pread(fd, &buf, 255, 0)
+    guard n > 0 else { return info }
+    buf[Int(n)] = 0
+    for line in String(cString: buf).split(separator: "\n") {
+        // Legacy format: a bare pid on the first line.
+        if let p = pid_t(line.trimmingCharacters(in: .whitespaces)) { info.pid = p; continue }
+        let kv = line.split(separator: "=", maxSplits: 1)
+        guard kv.count == 2 else { continue }
+        let value = kv[1].trimmingCharacters(in: .whitespaces)
+        switch kv[0].trimmingCharacters(in: .whitespaces) {
+        case "pid":           info.pid = pid_t(value)
+        case "accessibility": info.accessibility = (value == "1")
+        case "tiling":        info.tiling = (value == "1")
+        default:              break
         }
     }
-    return (true, nil)
+    return info
 }
 
 // MARK: - `wm status`
 
 func runStatus() -> Never {
-    let (running, pid) = daemonStatus()
+    let info = daemonStatus()
     let active = activeSpaceID()
     let spaces = orderedSpaces()
 
@@ -58,11 +75,11 @@ func runStatus() -> Never {
     }
 
     print("")
-    print("  \(running ? Style.green("●") : Style.red("●")) \(Style.bold("wm")) \(Style.grey(appVersion))")
+    print("  \(info.running ? Style.green("●") : Style.red("●")) \(Style.bold("wm")) \(Style.grey(appVersion))")
     print("")
 
-    if running {
-        let detail = pid.map { Style.grey(" (pid \($0))") } ?? ""
+    if info.running {
+        let detail = info.pid.map { Style.grey(" (pid \($0))") } ?? ""
         row("Daemon", Style.green("running") + detail)
     } else {
         row("Daemon", Style.red("stopped"))
@@ -72,8 +89,16 @@ func runStatus() -> Never {
     let autostart = FileManager.default.fileExists(atPath: agent)
     row("Auto-start", autostart ? Style.green("enabled") : Style.red("disabled"))
 
-    // Reflects the invoked binary; accurate when run as the installed signed app.
-    row("Accessibility", AXIsProcessTrusted() ? Style.green("granted") : Style.yellow("not granted"))
+    // Reported by the daemon itself (the CLI process can't see the daemon's grant).
+    switch info.accessibility {
+    case .some(true):  row("Accessibility", Style.green("granted"))
+    case .some(false): row("Accessibility", Style.yellow("not granted"))
+    case .none:        row("Accessibility", Style.grey("unknown"))
+    }
+
+    if let tiling = info.tiling {
+        row("Tiling", tiling ? Style.green("on") : Style.grey("off"))
+    }
 
     print("")
 
