@@ -2,6 +2,8 @@ PREFIX ?= $(HOME)/.local
 APP_NAME = wm.app
 APP_DIR = $(PREFIX)/$(APP_NAME)
 BINARY = $(APP_DIR)/Contents/MacOS/wm
+BIN_DIR = $(PREFIX)/bin
+CLI_LINK = $(BIN_DIR)/wm
 # Local self-signed code-signing certificate name. Left as-is so existing
 # installs keep signing; change it only if you create a cert with a new name.
 SIGNING_IDENTITY ?= focus-follows-mouse
@@ -24,6 +26,9 @@ install: build
 	cp .build/release/wm $(BINARY)
 	cp resources/Info.plist $(APP_DIR)/Contents/Info.plist
 	codesign --force --sign "$(SIGNING_IDENTITY)" $(APP_DIR)
+	@# Symlink the binary onto PATH so `wm status` etc. can be run as a CLI.
+	@mkdir -p $(BIN_DIR)
+	@ln -sf $(BINARY) $(CLI_LINK)
 	@mkdir -p $(LAUNCHD_DIR)
 	@sed 's|__BINARY_PATH__|$(BINARY)|g' \
 		resources/$(PLIST_NAME) > $(LAUNCHD_DIR)/$(PLIST_NAME)
@@ -47,10 +52,12 @@ install: build
 	@echo "Disabled macOS built-in tiling and automatic Space reordering."
 	@echo "Set Ctrl+1 through Ctrl+9 as Switch to Desktop shortcuts."
 	@echo "Installed to $(APP_DIR)"
+	@echo "Linked CLI to $(CLI_LINK)"
 	@echo "Run 'make load' to start the service."
 
 uninstall: unload
 	rm -rf $(APP_DIR)
+	rm -f $(CLI_LINK)
 	rm -f $(LAUNCHD_DIR)/$(PLIST_NAME)
 
 load:

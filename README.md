@@ -14,7 +14,7 @@ make install
 make load
 ```
 
-This builds a release binary, installs it as an app bundle at `~/.local/wm.app`, starts it as a launchd service, and disables macOS built-in tiling and automatic Space reordering.
+This builds a release binary, installs it as an app bundle at `~/.local/wm.app`, symlinks the `wm` CLI into `~/.local/bin` (so `wm status` works from the shell — ensure that directory is on your `PATH`), starts it as a launchd service, and disables macOS built-in tiling and automatic Space reordering.
 
 Override the install prefix with `PREFIX=/usr/local make install`.
 
