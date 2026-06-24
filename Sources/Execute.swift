@@ -18,6 +18,9 @@ private func enforceTileFrames(_ tileFrames: [UInt32: CGRect], label: String = "
 
 func executePlan(_ plan: TickPlan, snap: WorldSnapshot) {
     // 1. Update internal state
+    let membershipChanged = managedWindows.count != plan.reconciledWindows.count
+        || !managedWindows.keys.allSatisfy { plan.reconciledWindows[$0] != nil }
+    if membershipChanged { statusBarOccupancyDirty = true }
     managedWindows = plan.reconciledWindows
     bspTrees = plan.updatedTrees
     if let space = plan.newLastActiveSpace {

@@ -145,12 +145,55 @@ CGEvent.tapEnable(tap: tap, enable: true)
 
 // --- Main loop (read → compute → execute) ---
 
+// Idle-tick short-circuit. computePlan is a pure function of the snapshot, so
+// when the snapshot is identical to the last one we acted on and no input is
+// pending, recomputing would reproduce the already-applied state. In steady
+// state (stationary cursor, unchanged windows/Space) this skips the entire
+// reconcile → BSP → tile → status-bar pipeline, leaving only the cheap read.
+
+struct WindowSig: Equatable {
+    let id: UInt32
+    let frame: CGRect
+    let layer: Int
+}
+
+struct TickSignature: Equatable {
+    let windows: [WindowSig]
+    let spaceID: CGSSpaceID
+    let mouse: CGPoint
+    let mouseDown: Bool
+    let missionControl: Bool
+    let focusedID: UInt32
+}
+
+var lastSignature: TickSignature?
+
+func tickSignature(_ snap: WorldSnapshot) -> TickSignature {
+    TickSignature(
+        windows: snap.cgWindows.map { WindowSig(id: $0.id, frame: $0.frame, layer: $0.layer) },
+        spaceID: snap.spaceID,
+        mouse: snap.mousePosition,
+        mouseDown: snap.mouseDown,
+        missionControl: snap.missionControlActive,
+        focusedID: snap.focusedWindow?.id ?? 0
+    )
+}
+
 func tick() {
     tickNumber += 1
     let snap = readWorld()
+    let sig = tickSignature(snap)
+
+    let noPendingInput = snap.commands.isEmpty && snap.moveCommands.isEmpty
+        && !snap.rotate && pendingWarpToWindow == 0
+    if noPendingInput, lastSignature == sig {
+        return
+    }
+
     let plan = computePlan(snap)
     executePlan(plan, snap: snap)
     if config.statusBar { updateStatusBar(activeSpace: snap.spaceID) }
+    lastSignature = sig
 }
 
 let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,

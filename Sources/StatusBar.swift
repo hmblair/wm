@@ -6,6 +6,13 @@ private var lastRenderedSpaces: [CGSSpaceID] = []
 private var lastRenderedActive: CGSSpaceID = 0
 private var lastRenderedOccupied: Set<CGSSpaceID> = []
 
+// The occupied-space set requires one SkyLight IPC per managed window
+// (spaceForWindow). That set only changes when the managed-window membership
+// changes, so we recompute it then and cache it across the (common) ticks where
+// only the cursor or active Space moved. executePlan sets the dirty flag.
+var statusBarOccupancyDirty = true
+private var cachedOccupied: Set<CGSSpaceID> = []
+
 func setupStatusBar() {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
@@ -27,15 +34,20 @@ func setupStatusBar() {
 func updateStatusBar(activeSpace: CGSSpaceID) {
     guard let stack = stackView else { return }
 
+    if statusBarOccupancyDirty {
+        var occupied: Set<CGSSpaceID> = []
+        for (_, win) in managedWindows {
+            if let space = spaceForWindow(win.id) {
+                occupied.insert(space)
+            }
+        }
+        cachedOccupied = occupied
+        statusBarOccupancyDirty = false
+    }
+    let occupiedSpaces = cachedOccupied
+
     let spaces = orderedSpaces()
     let spaceIDs = spaces.map { $0.id }
-
-    var occupiedSpaces: Set<CGSSpaceID> = []
-    for (_, win) in managedWindows {
-        if let space = spaceForWindow(win.id) {
-            occupiedSpaces.insert(space)
-        }
-    }
 
     // Skip update if nothing changed
     guard spaceIDs != lastRenderedSpaces
