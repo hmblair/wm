@@ -47,11 +47,18 @@ With no command, `wm` runs as the window-manager daemon. The process runs in the
 
 `wm status` reports whether the daemon is running (and its pid), whether auto-start and Accessibility are enabled, the open Spaces with the active one highlighted, attached displays, and the loaded configuration. Colors are emitted only when stdout is a terminal.
 
-Logs are available via macOS unified logging:
+Logs are available via macOS unified logging. Use the absolute path
+`/usr/bin/log`, since zsh has a built-in `log` command that otherwise shadows
+it. Routine messages are emitted at the `info` level; `--level debug` also
+includes the verbose per-tick output (only produced when the daemon runs with
+`--verbose`):
 
 ```
-log stream --predicate 'subsystem == "com.hmblair.wm"' --level debug
+/usr/bin/log stream --predicate 'subsystem == "com.hmblair.wm"' --level info
 ```
+
+To read past logs instead of streaming, swap `stream` for `show` and add a
+window, e.g. `--last 5m --info`.
 
 ## Configuration
 
