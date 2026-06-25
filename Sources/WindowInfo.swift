@@ -50,9 +50,23 @@ func fetchCGWindowList() -> [CGWindowEntry] {
 }
 
 
+// AXUIElementCreateApplication rebuilds a fresh Accessibility handle on every
+// call, which getFocusedWindow does each tick (~60 Hz). The handle only
+// references the process, so it stays valid for the app's lifetime — cache it
+// per pid. A handle for a quit app simply makes subsequent queries fail, which
+// callers already treat as "no focus", so stale entries are harmless.
+private var axAppElementCache: [pid_t: AXUIElement] = [:]
+
+func axAppElement(for pid: pid_t) -> AXUIElement {
+    if let cached = axAppElementCache[pid] { return cached }
+    let element = AXUIElementCreateApplication(pid)
+    axAppElementCache[pid] = element
+    return element
+}
+
 func getFocusedWindow(cgWindows: [CGWindowEntry]) -> Window? {
     guard let frontApp = NSWorkspace.shared.frontmostApplication else { return nil }
-    let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
+    let appElement = axAppElement(for: frontApp.processIdentifier)
 
     var focusedRef: CFTypeRef?
     guard AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedRef) == .success,
