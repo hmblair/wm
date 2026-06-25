@@ -14,6 +14,8 @@ var statusBarOccupancyDirty = true
 private var cachedOccupied: Set<CGSSpaceID> = []
 
 func setupStatusBar() {
+    guard statusItem == nil else { return }
+
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
     let stack = NSStackView()
@@ -29,6 +31,17 @@ func setupStatusBar() {
     ])
 
     updateStatusBar(activeSpace: activeSpaceID())
+}
+
+func teardownStatusBar() {
+    if let item = statusItem { NSStatusBar.system.removeStatusItem(item) }
+    statusItem = nil
+    stackView = nil
+    // Reset render caches so a later setup repaints from scratch.
+    lastRenderedSpaces = []
+    lastRenderedActive = 0
+    lastRenderedOccupied = []
+    statusBarOccupancyDirty = true
 }
 
 func updateStatusBar(activeSpace: CGSSpaceID) {

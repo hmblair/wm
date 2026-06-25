@@ -126,11 +126,16 @@ func installPollTimer() {
 func reloadConfig() {
     let newConfig = loadConfig()
     let intervalChanged = newConfig.pollInterval != config.pollInterval
+    let statusBarChanged = newConfig.statusBar != config.statusBar
     log("config: reloaded")
     config = newConfig
     if intervalChanged {
         log("config: poll rate → \(1.0 / config.pollInterval) Hz")
         installPollTimer()
+    }
+    if statusBarChanged {
+        log("config: status bar → \(config.statusBar ? "on" : "off")")
+        if config.statusBar { setupStatusBar() } else { teardownStatusBar() }
     }
 }
 
