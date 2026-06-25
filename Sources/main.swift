@@ -107,25 +107,76 @@ installSignalHandlers()
 // --- Config file watcher ---
 
 var configWatcher: DispatchSourceFileSystemObject?
+var configFileWatcher: DispatchSourceFileSystemObject?
+var pollTimer: CFRunLoopTimer?
 
-func watchConfigFile() {
-    let dir = (Config.defaultPath as NSString).deletingLastPathComponent
-    let fd = open(dir, O_EVTONLY)
-    guard fd >= 0 else { return }
+// (Re)install the main-loop timer at the current poll interval. The interval is
+// baked into a CFRunLoopTimer at creation, so a live poll_rate change means
+// invalidating the old timer and scheduling a fresh one.
+func installPollTimer() {
+    if let existing = pollTimer { CFRunLoopTimerInvalidate(existing) }
+    let timer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
+        CFAbsoluteTimeGetCurrent(), config.pollInterval, 0, 0) { _ in
+        tick()
+    }
+    CFRunLoopAddTimer(CFRunLoopGetCurrent(), timer, .commonModes)
+    pollTimer = timer
+}
+
+func reloadConfig() {
+    let newConfig = loadConfig()
+    let intervalChanged = newConfig.pollInterval != config.pollInterval
+    log("config: reloaded")
+    config = newConfig
+    if intervalChanged {
+        log("config: poll rate → \(1.0 / config.pollInterval) Hz")
+        installPollTimer()
+    }
+}
+
+// Watch the config file itself for in-place edits (truncate + write to the same
+// inode), which the directory watch below cannot see. An atomic save (write
+// temp + rename over) unlinks the watched inode, so re-arm on .delete/.rename;
+// the directory watch re-arms it too as a backstop.
+func armConfigFileWatcher() {
+    configFileWatcher?.cancel()
+    let fd = open(Config.defaultPath, O_EVTONLY)
+    guard fd >= 0 else { configFileWatcher = nil; return }
 
     let source = DispatchSource.makeFileSystemObjectSource(
-        fileDescriptor: fd, eventMask: .write,
+        fileDescriptor: fd, eventMask: [.write, .extend, .attrib, .delete, .rename],
         queue: .main)
-
     source.setEventHandler {
-        let newConfig = loadConfig()
-        log("config: reloaded")
-        config = newConfig
+        let flags = source.data
+        reloadConfig()
+        if flags.contains(.delete) || flags.contains(.rename) {
+            armConfigFileWatcher()
+        }
     }
-
     source.setCancelHandler { close(fd) }
     source.resume()
-    configWatcher = source
+    configFileWatcher = source
+}
+
+func watchConfigFile() {
+    // Directory watch: catches atomic saves (rename into the dir), file
+    // creation, and deletion. It survives atomic replaces, so it also re-arms
+    // the file watch when an editor swaps the inode out from under it.
+    let dir = (Config.defaultPath as NSString).deletingLastPathComponent
+    let fd = open(dir, O_EVTONLY)
+    if fd >= 0 {
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd, eventMask: .write, queue: .main)
+        source.setEventHandler {
+            reloadConfig()
+            armConfigFileWatcher()
+        }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        configWatcher = source
+    }
+
+    armConfigFileWatcher()
 }
 
 watchConfigFile()
@@ -196,11 +247,7 @@ func tick() {
     lastSignature = sig
 }
 
-let pollTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
-    CFAbsoluteTimeGetCurrent(), config.pollInterval, 0, 0) { _ in
-    tick()
-}
-CFRunLoopAddTimer(CFRunLoopGetCurrent(), pollTimer, .commonModes)
+installPollTimer()
 
 if config.statusBar { setupStatusBar() }
 log("running\(verbose ? " (verbose)" : "")")

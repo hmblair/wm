@@ -61,8 +61,8 @@ Configuration is read from `~/.config/wm/config.toml`. All fields are optional. 
 # Gap in points between tiled windows and screen edges (default: 8)
 gap = 8
 
-# How often to poll for window changes, in seconds (default: 0.016)
-poll_interval = 0.016
+# How often to poll for window changes, in Hz (default: 60)
+poll_rate = 60
 
 # Show clickable space indicators in the menu bar (default: true)
 status_bar = true

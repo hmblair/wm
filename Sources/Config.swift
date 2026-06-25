@@ -66,8 +66,13 @@ struct Config: Codable {
         } else if let v = try? container.decode(Int.self, forKey: .gap) {
             gap = CGFloat(v)
         }
-        if let v = try? container.decode(Double.self, forKey: .pollInterval) {
-            pollInterval = v
+        // Config exposes the rate in Hz (more intuitive than an interval in
+        // seconds); convert to the internal poll interval here. Ignore
+        // non-positive rates, which would produce a non-firing timer.
+        if let v = try? container.decode(Double.self, forKey: .pollInterval), v > 0 {
+            pollInterval = 1.0 / v
+        } else if let v = try? container.decode(Int.self, forKey: .pollInterval), v > 0 {
+            pollInterval = 1.0 / CFTimeInterval(v)
         }
         if let v = try? container.decode([String].self, forKey: .ignoredApps) {
             ignoredApps = Set(v)
@@ -88,7 +93,7 @@ struct Config: Codable {
 
     enum CodingKeys: String, CodingKey {
         case gap
-        case pollInterval = "poll_interval"
+        case pollInterval = "poll_rate"
         case ignoredApps = "ignored_apps"
         case excludedApps = "excluded_apps"
         case statusBar = "status_bar"
