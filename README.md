@@ -11,17 +11,17 @@ A lightweight macOS daemon that provides focus-follows-mouse behavior, a BSP til
 
 ```
 make install
-make load
+wm start
 ```
 
-This builds a release binary, installs it as an app bundle at `~/.local/wm.app`, symlinks the `wm` CLI into `~/.local/bin` (so `wm status` works from the shell — ensure that directory is on your `PATH`), starts it as a launchd service, and disables macOS built-in tiling and automatic Space reordering.
+This builds a release binary, installs it as an app bundle at `~/.local/wm.app`, symlinks the `wm` CLI into `~/.local/bin` (so `wm` works from the shell — ensure that directory is on your `PATH`), registers it as a launchd service, and disables macOS built-in tiling and automatic Space reordering.
 
 Override the install prefix with `PREFIX=/usr/local make install`.
 
-To stop and remove:
+To stop the service or remove it entirely:
 
 ```
-make unload    # stop the service
+wm stop        # stop the service
 make uninstall # remove binary and plist
 ```
 
@@ -31,21 +31,29 @@ make uninstall # remove binary and plist
 wm [command] [flags]
 ```
 
-With no command, `wm` runs as the window-manager daemon. The process runs in the foreground and exits cleanly on SIGINT/SIGTERM. When installed as a launchd service, it starts at login and restarts on crash.
+With no command, `wm` prints daemon status (see below). The `daemon` command runs the window manager itself in the foreground; it exits cleanly on SIGINT/SIGTERM, and the launchd service invokes it to start at login and restart on crash.
 
 | Command | Description |
 |---------|-------------|
-| `status` | Print daemon status, open Spaces, displays, and config (colorized) |
+| _(none)_ | Print daemon status, open Spaces, displays, and config (colorized) |
+| `start` | Start the launchd service |
+| `stop` | Stop the launchd service |
+| `daemon` | Run the window manager in the foreground (used by launchd) |
 | `help` | Show usage |
 
 | Flag | Description |
 |------|-------------|
-| `--verbose`, `-v` | Print timestamped debug output to stderr |
-| `--dump` | Dump window info for the current space and exit |
-| `--no-tile` | Disable the built-in tiling window manager |
 | `--version` | Print version and exit |
 
-`wm status` reports whether the daemon is running (and its pid), whether auto-start and Accessibility are enabled, the open Spaces with the active one highlighted, attached displays, and the loaded configuration. Colors are emitted only when stdout is a terminal.
+The `daemon` command additionally accepts:
+
+| Flag | Description |
+|------|-------------|
+| `--verbose`, `-v` | Print timestamped debug output to stderr |
+| `--no-tile` | Disable the built-in tiling window manager |
+| `--dump` | Dump window info for the current space and exit |
+
+Run with no command, `wm` reports whether the daemon is running (and its pid), whether auto-start and Accessibility are enabled, the open Spaces with the active one highlighted, attached displays, and the loaded configuration. Colors are emitted only when stdout is a terminal.
 
 Logs are available via macOS unified logging. Use the absolute path
 `/usr/bin/log`, since zsh has a built-in `log` command that otherwise shadows

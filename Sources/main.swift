@@ -8,47 +8,55 @@ func printUsage(_ stream: UnsafeMutablePointer<FILE> = stdout) {
     fputs("""
     usage: wm [command] [flags]
 
+    With no command, wm prints daemon status, open spaces, and config.
+
     commands:
-      status           Print daemon status, open spaces, and config
+      start            Start the wm background service
+      stop             Stop the wm background service
+      daemon           Run the window manager in the foreground (used by launchd)
       help             Show this help
 
-    flags (daemon):
-      --verbose, -v    Print timestamped debug output to stderr
-      --dump           Dump window info for the current space and exit
-      --no-tile        Disable the tiling window manager
+    flags:
       --version        Print version and exit
 
-    With no command, wm runs as the window-manager daemon.
+    daemon flags (with 'wm daemon'):
+      --verbose, -v    Print timestamped debug output to stderr
+      --no-tile        Disable the tiling window manager
+      --dump           Dump window info for the current space and exit
 
     """, stream)
 }
 
-// CLI subcommands run and exit before the daemon starts.
-if CommandLine.arguments.count > 1, !CommandLine.arguments[1].hasPrefix("-") {
-    switch CommandLine.arguments[1] {
-    case "status": runStatus()
-    case "help":   printUsage(); exit(0)
-    default:
-        fputs("unknown command: \(CommandLine.arguments[1])\n", stderr)
-        printUsage(stderr); exit(1)
-    }
-}
-
+// Global flags, handled regardless of subcommand.
 if CommandLine.arguments.contains("-h") || CommandLine.arguments.contains("--help") {
     printUsage(); exit(0)
 }
+if CommandLine.arguments.contains("--version") {
+    print("wm \(appVersion)")
+    exit(0)
+}
 
-let knownArgs: Set<String> = ["--verbose", "-v", "--dump", "--no-tile", "--version"]
+// The first non-flag argument selects the subcommand; with none, show status.
+// Every command except `daemon` runs and exits here, before the daemon starts.
+let subcommand = CommandLine.arguments.dropFirst().first { !$0.hasPrefix("-") }
+switch subcommand {
+case .none:             runStatus()
+case .some("start"):    runStart()
+case .some("stop"):     runStop()
+case .some("daemon"):   break  // fall through to daemon startup below
+case .some("help"):     printUsage(); exit(0)
+case .some(let cmd):
+    fputs("unknown command: \(cmd)\n", stderr)
+    printUsage(stderr); exit(1)
+}
+
+// From here on we run as the daemon: `wm daemon [flags]`.
+let knownArgs: Set<String> = ["daemon", "--verbose", "-v", "--dump", "--no-tile"]
 for arg in CommandLine.arguments.dropFirst() {
     if !knownArgs.contains(arg) {
         fputs("unknown argument: \(arg)\n", stderr)
         printUsage(stderr); exit(1)
     }
-}
-
-if CommandLine.arguments.contains("--version") {
-    print("wm \(appVersion)")
-    exit(0)
 }
 
 // --- Single instance guard ---

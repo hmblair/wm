@@ -53,7 +53,7 @@ install: build
 	@echo "Set Ctrl+1 through Ctrl+9 as Switch to Desktop shortcuts."
 	@echo "Installed to $(APP_DIR)"
 	@echo "Linked CLI to $(CLI_LINK)"
-	@echo "Run 'make load' to start the service."
+	@echo "Run 'wm start' to start the service."
 
 uninstall: unload
 	rm -rf $(APP_DIR)
