@@ -35,8 +35,29 @@ private func updateConstraint(current: CGFloat?, actual: CGFloat) -> (CGFloat, B
     return (actual, current != actual)
 }
 
-private func detectSizeConstraints(win: ManagedWindow, requested: CGSize) -> Bool {
+private func detectSizeConstraints(win: ManagedWindow, requested: CGRect,
+                                   beforeSize: CGSize) -> Bool {
     let actual = axSize(of: win.axWindow)
+
+    // Constraints are inferred from a window falling short of the size we asked
+    // for, which only reveals a real limit if the window is actually acting on
+    // our requests. A live window lands at the position we set even when it
+    // can't reach the requested size — that mismatch is its true min/max. A
+    // window still launching or restoring its windows — e.g. just after logging
+    // back in — ignores the position too and sits at its restored, often
+    // minimum, size; reading a maximum off that would clamp it there on every
+    // later tick until it is dropped from managedWindows (by switching Spaces)
+    // and re-added fresh. So require evidence the window cooperated: it either
+    // honored the requested position, or resized at all. Comparing position
+    // against the request (not against where it started) still recognizes a
+    // window that was already sitting at its constrained position.
+    let actualPos = axPosition(of: win.axWindow)
+    let honorsPosition = abs(actualPos.x - requested.origin.x) <= frameTolerance
+                      && abs(actualPos.y - requested.origin.y) <= frameTolerance
+    let resized = abs(actual.width - beforeSize.width) > frameTolerance
+               || abs(actual.height - beforeSize.height) > frameTolerance
+    guard honorsPosition || resized else { return false }
+
     let dw = requested.width - actual.width
     let dh = requested.height - actual.height
     var discovered = false
@@ -91,6 +112,8 @@ func executeFocus(_ action: FocusAction) {
 
 @discardableResult
 func setWindowFrame(_ win: ManagedWindow, frame: CGRect) -> Bool {
+    let beforeSize = axSize(of: win.axWindow)
+
     let posErr = setAXPosition(of: win.axWindow, to: frame.origin)
     if posErr != .success {
         warn("tile: AX set position failed for [\(win.id)] (\(win.name)): \(posErr.rawValue)")
@@ -100,7 +123,8 @@ func setWindowFrame(_ win: ManagedWindow, frame: CGRect) -> Bool {
         warn("tile: AX set size failed for [\(win.id)] (\(win.name)): \(sizeErr.rawValue)")
     }
 
-    let constraintDiscovered = detectSizeConstraints(win: win, requested: frame.size)
+    let constraintDiscovered = detectSizeConstraints(
+        win: win, requested: frame, beforeSize: beforeSize)
     win.frame = frame
     return constraintDiscovered
 }
