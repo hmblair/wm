@@ -14,6 +14,7 @@ func printUsage(_ stream: UnsafeMutablePointer<FILE> = stdout) {
       start            Start the wm background service
       stop             Stop the wm background service
       daemon           Run the window manager in the foreground (used by launchd)
+      dump             Print on-screen window state and exit
       help             Show this help
 
     flags:
@@ -22,7 +23,6 @@ func printUsage(_ stream: UnsafeMutablePointer<FILE> = stdout) {
     daemon flags (with 'wm daemon'):
       --verbose, -v    Print timestamped debug output to stderr
       --no-tile        Disable the tiling window manager
-      --dump           Dump window info for the current space and exit
 
     """, stream)
 }
@@ -43,6 +43,7 @@ switch subcommand {
 case .none:             runStatus()
 case .some("start"):    runStart()
 case .some("stop"):     runStop()
+case .some("dump"):     runDump()
 case .some("daemon"):   break  // fall through to daemon startup below
 case .some("help"):     printUsage(); exit(0)
 case .some(let cmd):
@@ -51,7 +52,7 @@ case .some(let cmd):
 }
 
 // From here on we run as the daemon: `wm daemon [flags]`.
-let knownArgs: Set<String> = ["daemon", "--verbose", "-v", "--dump", "--no-tile"]
+let knownArgs: Set<String> = ["daemon", "--verbose", "-v", "--no-tile"]
 for arg in CommandLine.arguments.dropFirst() {
     if !knownArgs.contains(arg) {
         fputs("unknown argument: \(arg)\n", stderr)
@@ -92,12 +93,6 @@ var lastMousePosition: CGPoint = {
     let screenHeight = NSScreen.screens.first?.frame.height ?? 0
     return CGPoint(x: nsPos.x, y: screenHeight - nsPos.y)
 }()
-
-// --- Debug dump ---
-
-if CommandLine.arguments.contains("--dump") {
-    runDump()
-}
 
 // --- Signal handling ---
 
