@@ -43,17 +43,20 @@ func computeFocus(
 func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
     let pos = snap.mousePosition
 
-    // Find the topmost real window under the cursor (CG list is z-ordered).
-    // Restrict to standard app windows (layer 0) and currently-managed windows
-    // so transient system overlays — e.g. the Dock's full-screen layer-20
-    // window that appears after `killall Dock` during install — don't shadow
-    // the hit-test and block focus until a Space switch clears them.
+    // Find the topmost window under the cursor (the CG list is z-ordered) that is
+    // either one we manage (at any layer) or an ordinary app-level window — below
+    // the dock window level. System chrome blankets the screen with full-screen
+    // windows at the dock level or above (the Dock's layer-20 window, Notification
+    // Center at 21, the menu bar) and must be seen through, or it would shadow the
+    // hit-test and block focus. An app's open/save panel sits at a panel level
+    // (layer 8) and must not be seen through — see the occluder handling below.
+    let dockLevel = Int(CGWindowLevelForKey(.dockWindow))
     guard let hit = snap.cgWindows.first(where: {
-        $0.frame.contains(pos) && ($0.layer == 0 || plan.reconciledWindows[$0.id] != nil)
+        $0.frame.contains(pos) && (plan.reconciledWindows[$0.id] != nil || $0.layer < dockLevel)
     }) else {
-        // No real window under the cursor. If a system overlay (menu bar, Dock,
-        // Control Center, …) occupies this spot, leave focus alone — we're not
-        // over the desktop. Only unfocus when nothing at all is under the cursor.
+        // Only system chrome (or nothing) under the cursor. If any window covers
+        // this spot we're not over the desktop, so leave focus alone; only unfocus
+        // when nothing at all is under the cursor.
         let overOverlay = snap.cgWindows.contains { $0.frame.contains(pos) }
         if !overOverlay && lastFocusedWindow != 0 {
             let managedIDs = plan.reconciledWindows.keys.sorted()
@@ -71,6 +74,22 @@ func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
     }
 
     if config.ignoredApps.contains(hit.name) { return }
+
+    // An unmanaged window above the standard layer is an occluding panel or dialog
+    // (an open/save panel at layer 8, a floating window, …) that visually covers
+    // whatever is behind it. Focusing the window behind would raise it over the
+    // panel, so treat the panel as part of its owning app and stop here instead of
+    // falling through. Raise the owner if focus has drifted off it.
+    if hit.layer != 0 && plan.reconciledWindows[hit.id] == nil {
+        if let owner = NSRunningApplication(processIdentifier: hit.pid),
+           owner.activationPolicy == .regular, !owner.isActive,
+           spaceForWindow(hit.id) == snap.spaceID {
+            debug("mouse: occluding panel [\(hit.id)] (\(hit.name)) — activate owner")
+            plan.focusAction = .activate(owner)
+        }
+        plan.newLastFocusedWindow = 0
+        return
+    }
 
     let winSpace = spaceForWindow(hit.id).map(String.init) ?? "?"
 
