@@ -69,8 +69,9 @@ struct Config: Decodable {
     var focusBorder: Bool = false
     var borderColor: NSColor = .systemGreen
     var borderWidth: CGFloat = 1
-    // Outline corner radius. Match this to the system window corner radius
-    // (NSConvolutionOverride1 on Tahoe, ~12 by default) so it hugs the corners.
+    // Outline corner radius. wm pins the global window corner radius
+    // (NSConvolutionOverride1 on Tahoe) to this, so config.toml is the single
+    // source of truth for both the rendered corners and the outline.
     var borderRadius: CGFloat = 12
 
     static let defaultPath: String = {

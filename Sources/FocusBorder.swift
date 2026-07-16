@@ -8,8 +8,9 @@ import Cocoa
 //
 // The corner radius is a fixed, configurable value rather than something
 // measured per window: macOS exposes no public per-window radius, and on Tahoe
-// the window radius is a global appearance value (NSConvolutionOverride1), so a
-// single `border_radius` matched to it fits every window.
+// the window radius is a global appearance value (NSConvolutionOverride1). wm
+// pins that global value to `border_radius` (see pinWindowCornerRadius), so a
+// single config value drives both the rendered corners and the outline.
 
 private final class BorderView: NSView {
     var borderColor: NSColor = .systemGreen

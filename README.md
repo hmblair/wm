@@ -86,11 +86,11 @@ status_bar = true
 focus_border = false
 
 # Border color as a hex string (default: "#00ff00"), width in points
-# (default: 1), and corner radius in points (default: 12). Only used when
-# focus_border is true. Match border_radius to the system window corner
-# radius so the outline hugs the corners. On macOS Tahoe that radius is a
-# global appearance value you can pin with:
-#   defaults write -g NSConvolutionOverride1 -float 12
+# (default: 1), and corner radius in points (default: 12). The color and
+# width apply only when focus_border is true. On macOS Tahoe, wm pins the
+# global window corner radius (NSConvolutionOverride1) to border_radius so
+# the outline always hugs the corners; apps pick up the new radius on their
+# next launch. Reset it with: defaults delete -g NSConvolutionOverride1
 border_color = "#00ff00"
 border_width = 1
 border_radius = 12
