@@ -128,7 +128,7 @@ struct Config: Decodable {
     // reverted on clean stop / `wm reset`. Set false to leave the system alone.
     var manageSystemSettings: Bool = true
     var focusBorder: Bool = false
-    var borderColor: NSColor = .systemGreen
+    var borderColor: NSColor = NSColor(srgbRed: 137 / 255, green: 244 / 255, blue: 152 / 255, alpha: 1)
     var borderWidth: CGFloat = 1
     // Corner radius. wm pins the global window corner radius
     // (NSConvolutionOverride1 on Tahoe) to this, so config.toml is the single

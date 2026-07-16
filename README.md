@@ -93,13 +93,13 @@ manage_system_settings = true
 # Draw an i3-style outline around the focused window (default: false)
 focus_border = false
 
-# Border color as a hex string (default: "#00ff00"), width in points
+# Border color as a hex string (default: "#89f498"), width in points
 # (default: 1), and corner radius in points (default: 12). The color and
 # width apply only when focus_border is true. On macOS Tahoe, wm pins the
 # global window corner radius (NSConvolutionOverride1) to corner_radius so
 # the outline always hugs the corners; apps pick up the new radius on their
 # next launch. wm reverts it on stop, or run `wm reset`.
-border_color = "#00ff00"
+border_color = "#89f498"
 border_width = 1
 corner_radius = 12
 
