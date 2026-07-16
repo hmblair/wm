@@ -32,6 +32,7 @@ func fetchCGWindowList() -> [CGWindowEntry] {
         return []
     }
 
+    let ownPID = getpid()
     var entries: [CGWindowEntry] = []
     for info in infoList {
         guard let id = info[kCGWindowNumber as String] as? UInt32,
@@ -40,6 +41,9 @@ func fetchCGWindowList() -> [CGWindowEntry] {
               let layer = info[kCGWindowLayer as String] as? Int,
               let name = info[kCGWindowOwnerName as String] as? String
         else { continue }
+        // Skip the daemon's own windows (focus-border overlay, status item) so
+        // they never enter reconciliation or the idle-tick signature.
+        if pid == ownPID { continue }
         let frame = CGRect(
             x: boundsDict["X"] ?? 0, y: boundsDict["Y"] ?? 0,
             width: boundsDict["Width"] ?? 0, height: boundsDict["Height"] ?? 0
