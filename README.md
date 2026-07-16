@@ -14,7 +14,7 @@ make install
 wm start
 ```
 
-This builds a release binary, installs it as an app bundle at `~/.local/wm.app`, symlinks the `wm` CLI into `~/.local/bin` (so `wm` works from the shell — ensure that directory is on your `PATH`), registers it as a launchd service, and disables macOS built-in tiling and automatic Space reordering.
+This builds a release binary, installs it as an app bundle at `~/.local/wm.app`, symlinks the `wm` CLI into `~/.local/bin` (so `wm` works from the shell — ensure that directory is on your `PATH`), and registers it as a launchd service. The daemon itself applies its managed macOS settings — disabling built-in edge-drag tiling and automatic Space reordering, registering the Switch-to-Desktop shortcuts, and pinning the window corner radius — on start, and reverts them on stop (see [System settings](#system-settings)).
 
 Override the install prefix with `PREFIX=/usr/local make install`.
 
@@ -39,6 +39,8 @@ With no command, `wm` prints daemon status (see below). The `daemon` command run
 | `start` | Start the launchd service |
 | `stop` | Stop the launchd service |
 | `daemon` | Run the window manager in the foreground (used by launchd) |
+| `dump` | Print on-screen window state and exit |
+| `reset` | Revert wm-managed system settings to macOS defaults |
 | `help` | Show usage |
 
 | Flag | Description |
@@ -82,6 +84,12 @@ poll_rate = 60
 # Show clickable space indicators in the menu bar (default: true)
 status_bar = true
 
+# Whether wm manages global macOS settings — native edge-drag tiling,
+# automatic Space reordering, Switch-to-Desktop shortcuts, and the window
+# corner radius — applying them on start and reverting on stop (default: true).
+# Set false to leave the system untouched.
+manage_system_settings = true
+
 # Draw an i3-style outline around the focused window (default: false)
 focus_border = false
 
@@ -90,7 +98,7 @@ focus_border = false
 # width apply only when focus_border is true. On macOS Tahoe, wm pins the
 # global window corner radius (NSConvolutionOverride1) to corner_radius so
 # the outline always hugs the corners; apps pick up the new radius on their
-# next launch. Reset it with: defaults delete -g NSConvolutionOverride1
+# next launch. wm reverts it on stop, or run `wm reset`.
 border_color = "#00ff00"
 border_width = 1
 corner_radius = 12
@@ -121,7 +129,16 @@ shift = true
 [keybindings.move_to_space_modifier]
 cmd = true
 shift = true
+
+# Modifier for the system "Switch to Desktop N" shortcuts (Ctrl by default).
+# wm registers these shortcuts and posts them to switch Spaces, so changing
+# this re-registers them and updates wm's own key events, live on save.
+[keybindings.space_switch_modifier]
+ctrl = true
 ```
+
+Each `[keybindings.*]` table is optional and merges over the defaults — an
+omitted flag (or an omitted table) keeps its default value.
 
 ## Keybindings
 
@@ -159,3 +176,9 @@ Arrow-key bindings allow moving focus between windows, swapping window positions
 ### Focus border
 
 When `focus_border` is enabled, a borderless click-through overlay draws an i3-style outline around the focused window, following it across tiling, focus changes, and Spaces. Since macOS exposes no per-window corner radius, wm pins the global window corner radius (`NSConvolutionOverride1`) to `corner_radius` so the outline matches every window's corners. Existing windows adopt a changed radius on their next launch.
+
+### System settings
+
+When `manage_system_settings` is enabled (the default), the daemon owns the global macOS settings it depends on rather than the installer: it disables native edge-drag tiling and automatic Space reordering, registers the Ctrl+1–9 (configurable) Switch-to-Desktop shortcuts, and pins the window corner radius. These are applied on start, re-applied idempotently on config reload (so the shortcut modifier and corner radius live-update), and reverted to macOS defaults on a clean stop.
+
+Because a `SIGKILL` can't run the shutdown revert, `wm reset` reverts everything unconditionally; `make uninstall` calls it as a backstop.

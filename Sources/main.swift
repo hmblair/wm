@@ -15,6 +15,7 @@ func printUsage(_ stream: UnsafeMutablePointer<FILE> = stdout) {
       stop             Stop the wm background service
       daemon           Run the window manager in the foreground (used by launchd)
       dump             Print on-screen window state and exit
+      reset            Revert wm-managed system settings to macOS defaults
       help             Show this help
 
     flags:
@@ -44,6 +45,7 @@ case .none:             runStatus()
 case .some("start"):    runStart()
 case .some("stop"):     runStop()
 case .some("dump"):     runDump()
+case .some("reset"):    runReset()
 case .some("daemon"):   break  // fall through to daemon startup below
 case .some("help"):     printUsage(); exit(0)
 case .some(let cmd):
@@ -100,7 +102,10 @@ func installSignalHandlers() {
     let handler: @convention(c) (Int32) -> Void = { sig in
         log("received signal \(sig), shutting down")
         DispatchQueue.main.async {
-            unpinWindowCornerRadius()
+            if config.manageSystemSettings {
+                revertSystemSettings()
+                log("shutdown: reverted managed system settings")
+            }
             NSApplication.shared.terminate(nil)
         }
     }
@@ -129,36 +134,6 @@ func installPollTimer() {
     pollTimer = timer
 }
 
-// The global window corner radius AppKit reads at window creation on Tahoe.
-let windowCornerRadiusKey = "NSConvolutionOverride1" as CFString
-
-// Pin the global window corner radius to config.cornerRadius, so config.toml
-// drives both the rendered window corners and the outline. Writes only when the
-// value differs; apps pick it up on their next launch.
-func pinWindowCornerRadius() {
-    let desired = Double(config.cornerRadius)
-    let current = CFPreferencesCopyValue(
-        windowCornerRadiusKey, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) as? Double
-    guard current != desired else { return }
-    CFPreferencesSetValue(
-        windowCornerRadiusKey, desired as CFNumber, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
-    CFPreferencesAppSynchronize(kCFPreferencesAnyApplication)
-    log("config: pinned window corner radius → \(Int(config.cornerRadius))pt (relaunch apps to apply)")
-}
-
-// Remove wm's global corner-radius override on shutdown, restoring the macOS
-// default (for windows created afterward). Runs on clean termination, which
-// includes `wm stop` and `make uninstall` (both SIGTERM the daemon).
-func unpinWindowCornerRadius() {
-    guard CFPreferencesCopyValue(
-        windowCornerRadiusKey, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) != nil
-    else { return }
-    CFPreferencesSetValue(
-        windowCornerRadiusKey, nil, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
-    CFPreferencesAppSynchronize(kCFPreferencesAnyApplication)
-    log("shutdown: restored default window corner radius")
-}
-
 func reloadConfig() {
     let newConfig = loadConfig()
     let intervalChanged = newConfig.pollInterval != config.pollInterval
@@ -183,7 +158,9 @@ func reloadConfig() {
     } else if config.focusBorder && borderStyleChanged {
         refreshFocusBorderStyle()
     }
-    pinWindowCornerRadius()
+    // Re-apply managed system settings so corner radius and the Switch-to-Desktop
+    // modifier live-update on config edits (idempotent when nothing changed).
+    applySystemSettings()
 }
 
 // Watch the config file itself for in-place edits (truncate + write to the same
@@ -303,7 +280,7 @@ installPollTimer()
 
 if config.statusBar { setupStatusBar() }
 if config.focusBorder { setupFocusBorder() }
-pinWindowCornerRadius()
+applySystemSettings()
 log("running\(verbose ? " (verbose)" : "")")
 NSApplication.shared.run()
 log("stopped")

@@ -17,11 +17,26 @@ func nsColor(fromHex hex: String) -> NSColor? {
         alpha: 1)
 }
 
-struct ModifierConfig: Codable {
+struct ModifierConfig: Decodable, Equatable {
     var cmd: Bool = false
     var shift: Bool = false
     var ctrl: Bool = false
     var option: Bool = false
+
+    init() {}
+
+    // Decode leniently: a partial table (e.g. only `cmd = true`) keeps the
+    // other flags at their defaults. Synthesized Decodable would instead throw
+    // on any missing key, silently reverting the whole modifier to defaults.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let v = try? c.decode(Bool.self, forKey: .cmd) { cmd = v }
+        if let v = try? c.decode(Bool.self, forKey: .shift) { shift = v }
+        if let v = try? c.decode(Bool.self, forKey: .ctrl) { ctrl = v }
+        if let v = try? c.decode(Bool.self, forKey: .option) { option = v }
+    }
+
+    enum CodingKeys: String, CodingKey { case cmd, shift, ctrl, option }
 
     func matches(_ flags: CGEventFlags) -> Bool {
         let hasCmd = flags.contains(.maskCommand)
@@ -30,9 +45,30 @@ struct ModifierConfig: Codable {
         let hasOption = flags.contains(.maskAlternate)
         return hasCmd == cmd && hasShift == shift && hasCtrl == ctrl && hasOption == option
     }
+
+    // CGEventFlags for synthesizing key events with these modifiers.
+    var eventFlags: CGEventFlags {
+        var flags: CGEventFlags = []
+        if cmd { flags.insert(.maskCommand) }
+        if shift { flags.insert(.maskShift) }
+        if ctrl { flags.insert(.maskControl) }
+        if option { flags.insert(.maskAlternate) }
+        return flags
+    }
+
+    // Bitmask in NSEvent's device-independent modifier flags, as stored in the
+    // com.apple.symbolichotkeys parameters array.
+    var symbolicHotkeyMask: Int {
+        var mask = 0
+        if cmd { mask |= 1 << 20 }
+        if shift { mask |= 1 << 17 }
+        if ctrl { mask |= 1 << 18 }
+        if option { mask |= 1 << 19 }
+        return mask
+    }
 }
 
-struct KeybindingsConfig: Codable {
+struct KeybindingsConfig: Decodable {
     var focusModifier: ModifierConfig = {
         var m = ModifierConfig(); m.cmd = true; return m
     }()
@@ -42,12 +78,33 @@ struct KeybindingsConfig: Codable {
     var moveToSpaceModifier: ModifierConfig = {
         var m = ModifierConfig(); m.cmd = true; m.shift = true; return m
     }()
+    // Modifier for the system "Switch to Desktop N" shortcuts (Ctrl by default).
+    // wm both registers these shortcuts and posts them to switch Spaces, so this
+    // drives the symbolic-hotkey registration and wm's own key events together.
+    var spaceSwitchModifier: ModifierConfig = {
+        var m = ModifierConfig(); m.ctrl = true; return m
+    }()
     var enabled: Bool = true
+
+    init() {}
+
+    // Decode leniently so a table specifying only some bindings keeps the rest
+    // at their defaults (synthesized Decodable would throw on the first missing
+    // key, reverting every binding to defaults).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let v = try? c.decode(ModifierConfig.self, forKey: .focusModifier) { focusModifier = v }
+        if let v = try? c.decode(ModifierConfig.self, forKey: .swapModifier) { swapModifier = v }
+        if let v = try? c.decode(ModifierConfig.self, forKey: .moveToSpaceModifier) { moveToSpaceModifier = v }
+        if let v = try? c.decode(ModifierConfig.self, forKey: .spaceSwitchModifier) { spaceSwitchModifier = v }
+        if let v = try? c.decode(Bool.self, forKey: .enabled) { enabled = v }
+    }
 
     enum CodingKeys: String, CodingKey {
         case focusModifier = "focus_modifier"
         case swapModifier = "swap_modifier"
         case moveToSpaceModifier = "move_to_space_modifier"
+        case spaceSwitchModifier = "space_switch_modifier"
         case enabled
     }
 }
@@ -66,6 +123,10 @@ struct Config: Decodable {
     var statusBar: Bool = true
     var prefer: SplitPreference = .none
     var keybindings: KeybindingsConfig = KeybindingsConfig()
+    // Whether wm manages global macOS settings (native tiling, Space reordering,
+    // switch-to-Desktop shortcuts, window corner radius). Applied on start and
+    // reverted on clean stop / `wm reset`. Set false to leave the system alone.
+    var manageSystemSettings: Bool = true
     var focusBorder: Bool = false
     var borderColor: NSColor = .systemGreen
     var borderWidth: CGFloat = 1
@@ -111,6 +172,9 @@ struct Config: Decodable {
         if let v = try? container.decode(KeybindingsConfig.self, forKey: .keybindings) {
             keybindings = v
         }
+        if let v = try? container.decode(Bool.self, forKey: .manageSystemSettings) {
+            manageSystemSettings = v
+        }
         if let v = try? container.decode(Bool.self, forKey: .focusBorder) {
             focusBorder = v
         }
@@ -138,6 +202,7 @@ struct Config: Decodable {
         case statusBar = "status_bar"
         case prefer
         case keybindings
+        case manageSystemSettings = "manage_system_settings"
         case focusBorder = "focus_border"
         case borderColor = "border_color"
         case borderWidth = "border_width"

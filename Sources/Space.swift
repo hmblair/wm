@@ -102,7 +102,8 @@ func moveWindowToSpace(axWindow: AXUIElement, spaceIndex: Int) {
         .post(tap: .cghidEventTap)
 
     guard spaceIndex < spaceKeyCodes.count else { return }
-    postKeyEvent(keyCode: spaceKeyCodes[spaceIndex])
+    postKeyEvent(keyCode: spaceKeyCodes[spaceIndex],
+                 flags: config.keybindings.spaceSwitchModifier.eventFlags)
 
     CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: titleBar, mouseButton: .left)!
         .post(tap: .cghidEventTap)

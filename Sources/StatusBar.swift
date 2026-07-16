@@ -117,7 +117,8 @@ func updateStatusBar(activeSpace: CGSSpaceID) {
 
 func switchToSpace(_ index: Int) {
     guard index < spaceKeyCodes.count else { return }
-    postKeyEvent(keyCode: spaceKeyCodes[index])
+    postKeyEvent(keyCode: spaceKeyCodes[index],
+                 flags: config.keybindings.spaceSwitchModifier.eventFlags)
 }
 
 private class SpaceButton: NSButton {

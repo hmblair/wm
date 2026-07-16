@@ -32,38 +32,23 @@ install: build
 	@mkdir -p $(LAUNCHD_DIR)
 	@sed 's|__BINARY_PATH__|$(BINARY)|g' \
 		resources/$(PLIST_NAME) > $(LAUNCHD_DIR)/$(PLIST_NAME)
-	@defaults write -g EnableTilingByEdgeDrag -bool false
-	@defaults write -g EnableTopTilingByEdgeDrag -bool false
-	@defaults write -g EnableTilingOptionAccelerator -bool false
-	@defaults write com.apple.dock mru-spaces -bool false && killall Dock
-	@# Set Ctrl+1 through Ctrl+9 as "Switch to Desktop N" shortcuts. macOS only
-	@# honors these when stored with the right types — a boolean <enabled> and
-	@# integer <parameters> (ascii, keycode, modifier). Old-style plist syntax
-	@# ({ enabled = 1; parameters = (...); }) writes them as strings, which the
-	@# hotkey subsystem silently ignores. Keycodes match spaceKeyCodes (Space.swift).
-	@for triple in 118:49:18 119:50:19 120:51:20 121:52:21 122:53:23 123:54:22 124:55:26 125:56:28 126:57:25; do \
-		id=$${triple%%:*}; rest=$${triple#*:}; ascii=$${rest%%:*}; kc=$${rest#*:}; \
-		defaults write com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add $$id "<dict><key>enabled</key><true/><key>value</key><dict><key>type</key><string>standard</string><key>parameters</key><array><integer>$$ascii</integer><integer>$$kc</integer><integer>262144</integer></array></dict></dict>"; \
-	done
-	@# Reload the symbolic hotkeys so the shortcuts take effect now, without a
-	@# logout. The defaults above only update the plist; the hotkey subsystem
-	@# keeps its own cached copy until this forces a re-read.
-	@/System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings -u
-	@echo "Disabled macOS built-in tiling and automatic Space reordering."
-	@echo "Set Ctrl+1 through Ctrl+9 as Switch to Desktop shortcuts."
+	@# The daemon applies its managed macOS settings (native tiling, Space
+	@# reordering, Switch-to-Desktop shortcuts, window corner radius) on start
+	@# and reverts them on stop — see SystemSettings.swift and `wm reset`.
 	@echo "Installed to $(APP_DIR)"
 	@echo "Linked CLI to $(CLI_LINK)"
 	@echo "Run 'wm start' to start the service."
 
 uninstall: unload
+	@# Revert every wm-managed system setting. `unload` already SIGTERMs the
+	@# daemon (which reverts on clean exit); this runs the installed binary once
+	@# more as a backstop before removal, covering a prior hard kill that
+	@# skipped the shutdown handler.
+	-"$(BINARY)" reset
 	rm -rf $(APP_DIR)
 	rm -f $(CLI_LINK)
 	rm -f $(LAUNCHD_DIR)/$(PLIST_NAME)
-	@# Remove wm's global window corner-radius override unconditionally, so
-	@# uninstall cleans up even if the daemon was SIGKILL'd (its shutdown
-	@# handler never ran) and left the override in place.
-	@defaults delete -g NSConvolutionOverride1 2>/dev/null || true
-	@echo "Restored default window corner radius."
+	@echo "Removed wm and reverted managed system settings."
 
 load:
 	launchctl load -w $(LAUNCHD_DIR)/$(PLIST_NAME)
