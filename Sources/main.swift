@@ -99,7 +99,10 @@ var lastMousePosition: CGPoint = {
 func installSignalHandlers() {
     let handler: @convention(c) (Int32) -> Void = { sig in
         log("received signal \(sig), shutting down")
-        DispatchQueue.main.async { NSApplication.shared.terminate(nil) }
+        DispatchQueue.main.async {
+            unpinWindowCornerRadius()
+            NSApplication.shared.terminate(nil)
+        }
     }
     signal(SIGINT, handler)
     signal(SIGTERM, handler)
@@ -126,20 +129,34 @@ func installPollTimer() {
     pollTimer = timer
 }
 
-// Pin the global window corner radius (NSConvolutionOverride1, read by AppKit at
-// window creation on Tahoe) to config.cornerRadius, so config.toml drives both
-// the rendered window corners and the outline. Writes only when the value
-// differs; apps pick it up on their next launch.
+// The global window corner radius AppKit reads at window creation on Tahoe.
+let windowCornerRadiusKey = "NSConvolutionOverride1" as CFString
+
+// Pin the global window corner radius to config.cornerRadius, so config.toml
+// drives both the rendered window corners and the outline. Writes only when the
+// value differs; apps pick it up on their next launch.
 func pinWindowCornerRadius() {
-    let key = "NSConvolutionOverride1" as CFString
     let desired = Double(config.cornerRadius)
     let current = CFPreferencesCopyValue(
-        key, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) as? Double
+        windowCornerRadiusKey, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) as? Double
     guard current != desired else { return }
     CFPreferencesSetValue(
-        key, desired as CFNumber, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
+        windowCornerRadiusKey, desired as CFNumber, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
     CFPreferencesAppSynchronize(kCFPreferencesAnyApplication)
     log("config: pinned window corner radius → \(Int(config.cornerRadius))pt (relaunch apps to apply)")
+}
+
+// Remove wm's global corner-radius override on shutdown, restoring the macOS
+// default (for windows created afterward). Runs on clean termination, which
+// includes `wm stop` and `make uninstall` (both SIGTERM the daemon).
+func unpinWindowCornerRadius() {
+    guard CFPreferencesCopyValue(
+        windowCornerRadiusKey, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) != nil
+    else { return }
+    CFPreferencesSetValue(
+        windowCornerRadiusKey, nil, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
+    CFPreferencesAppSynchronize(kCFPreferencesAnyApplication)
+    log("shutdown: restored default window corner radius")
 }
 
 func reloadConfig() {
