@@ -88,12 +88,12 @@ focus_border = false
 # Border color as a hex string (default: "#00ff00"), width in points
 # (default: 1), and corner radius in points (default: 12). The color and
 # width apply only when focus_border is true. On macOS Tahoe, wm pins the
-# global window corner radius (NSConvolutionOverride1) to border_radius so
+# global window corner radius (NSConvolutionOverride1) to corner_radius so
 # the outline always hugs the corners; apps pick up the new radius on their
 # next launch. Reset it with: defaults delete -g NSConvolutionOverride1
 border_color = "#00ff00"
 border_width = 1
-border_radius = 12
+corner_radius = 12
 
 # Apps whose windows are completely invisible to the daemon.
 # They won't be focused, tiled, or tracked in any way.

@@ -69,10 +69,10 @@ struct Config: Decodable {
     var focusBorder: Bool = false
     var borderColor: NSColor = .systemGreen
     var borderWidth: CGFloat = 1
-    // Outline corner radius. wm pins the global window corner radius
+    // Corner radius. wm pins the global window corner radius
     // (NSConvolutionOverride1 on Tahoe) to this, so config.toml is the single
     // source of truth for both the rendered corners and the outline.
-    var borderRadius: CGFloat = 12
+    var cornerRadius: CGFloat = 12
 
     static let defaultPath: String = {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -123,10 +123,10 @@ struct Config: Decodable {
         } else if let v = try? container.decode(Int.self, forKey: .borderWidth), v > 0 {
             borderWidth = CGFloat(v)
         }
-        if let v = try? container.decode(Double.self, forKey: .borderRadius), v >= 0 {
-            borderRadius = CGFloat(v)
-        } else if let v = try? container.decode(Int.self, forKey: .borderRadius), v >= 0 {
-            borderRadius = CGFloat(v)
+        if let v = try? container.decode(Double.self, forKey: .cornerRadius), v >= 0 {
+            cornerRadius = CGFloat(v)
+        } else if let v = try? container.decode(Int.self, forKey: .cornerRadius), v >= 0 {
+            cornerRadius = CGFloat(v)
         }
     }
 
@@ -141,7 +141,7 @@ struct Config: Decodable {
         case focusBorder = "focus_border"
         case borderColor = "border_color"
         case borderWidth = "border_width"
-        case borderRadius = "border_radius"
+        case cornerRadius = "corner_radius"
     }
 }
 

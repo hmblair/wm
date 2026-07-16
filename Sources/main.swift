@@ -127,19 +127,19 @@ func installPollTimer() {
 }
 
 // Pin the global window corner radius (NSConvolutionOverride1, read by AppKit at
-// window creation on Tahoe) to config.borderRadius, so config.toml drives both
+// window creation on Tahoe) to config.cornerRadius, so config.toml drives both
 // the rendered window corners and the outline. Writes only when the value
 // differs; apps pick it up on their next launch.
 func pinWindowCornerRadius() {
     let key = "NSConvolutionOverride1" as CFString
-    let desired = Double(config.borderRadius)
+    let desired = Double(config.cornerRadius)
     let current = CFPreferencesCopyValue(
         key, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) as? Double
     guard current != desired else { return }
     CFPreferencesSetValue(
         key, desired as CFNumber, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
     CFPreferencesAppSynchronize(kCFPreferencesAnyApplication)
-    log("config: pinned window corner radius → \(Int(config.borderRadius))pt (relaunch apps to apply)")
+    log("config: pinned window corner radius → \(Int(config.cornerRadius))pt (relaunch apps to apply)")
 }
 
 func reloadConfig() {
@@ -149,7 +149,7 @@ func reloadConfig() {
     let focusBorderChanged = newConfig.focusBorder != config.focusBorder
     let borderStyleChanged = newConfig.borderColor != config.borderColor
         || newConfig.borderWidth != config.borderWidth
-        || newConfig.borderRadius != config.borderRadius
+        || newConfig.cornerRadius != config.cornerRadius
     log("config: reloaded")
     config = newConfig
     if intervalChanged {

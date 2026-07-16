@@ -9,7 +9,7 @@ import Cocoa
 // The corner radius is a fixed, configurable value rather than something
 // measured per window: macOS exposes no public per-window radius, and on Tahoe
 // the window radius is a global appearance value (NSConvolutionOverride1). wm
-// pins that global value to `border_radius` (see pinWindowCornerRadius), so a
+// pins that global value to `corner_radius` (see pinWindowCornerRadius), so a
 // single config value drives both the rendered corners and the outline.
 
 private final class BorderView: NSView {
@@ -58,7 +58,7 @@ func setupFocusBorder() {
     let view = BorderView(frame: .zero)
     view.borderColor = config.borderColor
     view.borderWidth = config.borderWidth
-    view.cornerRadius = config.borderRadius
+    view.cornerRadius = config.cornerRadius
     panel.contentView = view
 
     borderView = view
@@ -76,7 +76,7 @@ func teardownFocusBorder() {
 func refreshFocusBorderStyle() {
     borderView?.borderColor = config.borderColor
     borderView?.borderWidth = config.borderWidth
-    borderView?.cornerRadius = config.borderRadius
+    borderView?.cornerRadius = config.cornerRadius
     lastBorderFrame = nil  // force a redraw+reposition on the next update
     borderView?.needsDisplay = true
 }
