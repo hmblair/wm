@@ -82,6 +82,19 @@ poll_rate = 60
 # Show clickable space indicators in the menu bar (default: true)
 status_bar = true
 
+# Draw an i3-style outline around the focused window (default: false)
+focus_border = false
+
+# Border color as a hex string (default: "#00ff00"), width in points
+# (default: 1), and corner radius in points (default: 12). Only used when
+# focus_border is true. Match border_radius to the system window corner
+# radius so the outline hugs the corners. On macOS Tahoe that radius is a
+# global appearance value you can pin with:
+#   defaults write -g NSConvolutionOverride1 -float 12
+border_color = "#00ff00"
+border_width = 1
+border_radius = 12
+
 # Apps whose windows are completely invisible to the daemon.
 # They won't be focused, tiled, or tracked in any way.
 ignored_apps = ["borders", "Hammerspoon", "Alfred", "Raycast"]

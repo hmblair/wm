@@ -130,6 +130,10 @@ func reloadConfig() {
     let newConfig = loadConfig()
     let intervalChanged = newConfig.pollInterval != config.pollInterval
     let statusBarChanged = newConfig.statusBar != config.statusBar
+    let focusBorderChanged = newConfig.focusBorder != config.focusBorder
+    let borderStyleChanged = newConfig.borderColor != config.borderColor
+        || newConfig.borderWidth != config.borderWidth
+        || newConfig.borderRadius != config.borderRadius
     log("config: reloaded")
     config = newConfig
     if intervalChanged {
@@ -139,6 +143,12 @@ func reloadConfig() {
     if statusBarChanged {
         log("config: status bar → \(config.statusBar ? "on" : "off")")
         if config.statusBar { setupStatusBar() } else { teardownStatusBar() }
+    }
+    if focusBorderChanged {
+        log("config: focus border → \(config.focusBorder ? "on" : "off")")
+        if config.focusBorder { setupFocusBorder() } else { teardownFocusBorder() }
+    } else if config.focusBorder && borderStyleChanged {
+        refreshFocusBorderStyle()
     }
 }
 
@@ -258,6 +268,7 @@ func tick() {
 installPollTimer()
 
 if config.statusBar { setupStatusBar() }
+if config.focusBorder { setupFocusBorder() }
 log("running\(verbose ? " (verbose)" : "")")
 NSApplication.shared.run()
 log("stopped")

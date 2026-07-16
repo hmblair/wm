@@ -1,6 +1,21 @@
+import Cocoa
 import CoreGraphics
 import Foundation
 import TOMLKit
+
+// Parse a "#rrggbb" / "#rgb" hex string into an NSColor. Returns nil on any
+// malformed input so callers can fall back to a default.
+func nsColor(fromHex hex: String) -> NSColor? {
+    var s = hex.trimmingCharacters(in: .whitespaces)
+    if s.hasPrefix("#") { s.removeFirst() }
+    if s.count == 3 { s = s.map { "\($0)\($0)" }.joined() }  // #rgb → #rrggbb
+    guard s.count == 6, let value = UInt32(s, radix: 16) else { return nil }
+    return NSColor(
+        srgbRed: CGFloat((value >> 16) & 0xff) / 255,
+        green: CGFloat((value >> 8) & 0xff) / 255,
+        blue: CGFloat(value & 0xff) / 255,
+        alpha: 1)
+}
 
 struct ModifierConfig: Codable {
     var cmd: Bool = false
@@ -43,7 +58,7 @@ enum SplitPreference: String, Codable {
     case horizontal
 }
 
-struct Config: Codable {
+struct Config: Decodable {
     var gap: CGFloat = 8
     var pollInterval: CFTimeInterval = 0.016
     var ignoredApps: Set<String> = []
@@ -51,6 +66,12 @@ struct Config: Codable {
     var statusBar: Bool = true
     var prefer: SplitPreference = .none
     var keybindings: KeybindingsConfig = KeybindingsConfig()
+    var focusBorder: Bool = false
+    var borderColor: NSColor = .systemGreen
+    var borderWidth: CGFloat = 1
+    // Outline corner radius. Match this to the system window corner radius
+    // (NSConvolutionOverride1 on Tahoe, ~12 by default) so it hugs the corners.
+    var borderRadius: CGFloat = 12
 
     static let defaultPath: String = {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -89,6 +110,23 @@ struct Config: Codable {
         if let v = try? container.decode(KeybindingsConfig.self, forKey: .keybindings) {
             keybindings = v
         }
+        if let v = try? container.decode(Bool.self, forKey: .focusBorder) {
+            focusBorder = v
+        }
+        if let v = try? container.decode(String.self, forKey: .borderColor),
+           let color = nsColor(fromHex: v) {
+            borderColor = color
+        }
+        if let v = try? container.decode(Double.self, forKey: .borderWidth), v > 0 {
+            borderWidth = CGFloat(v)
+        } else if let v = try? container.decode(Int.self, forKey: .borderWidth), v > 0 {
+            borderWidth = CGFloat(v)
+        }
+        if let v = try? container.decode(Double.self, forKey: .borderRadius), v >= 0 {
+            borderRadius = CGFloat(v)
+        } else if let v = try? container.decode(Int.self, forKey: .borderRadius), v >= 0 {
+            borderRadius = CGFloat(v)
+        }
     }
 
     enum CodingKeys: String, CodingKey {
@@ -99,6 +137,10 @@ struct Config: Codable {
         case statusBar = "status_bar"
         case prefer
         case keybindings
+        case focusBorder = "focus_border"
+        case borderColor = "border_color"
+        case borderWidth = "border_width"
+        case borderRadius = "border_radius"
     }
 }
 

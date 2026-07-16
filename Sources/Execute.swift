@@ -61,4 +61,14 @@ func executePlan(_ plan: TickPlan, snap: WorldSnapshot) {
         warpMouse(to: frame)
         lastMousePosition = CGPoint(x: frame.midX, y: frame.midY)
     }
+
+    // 6. Focus border. Prefer the tile frame for the focused window (the
+    // settled position we just enforced) over its possibly-stale CG frame.
+    if config.focusBorder {
+        let frame = snap.focusedWindow.flatMap { focused -> CGRect? in
+            if let tiled = plan.tileFrames[focused.id] { return tiled }
+            return focused.frame.isEmpty ? nil : focused.frame
+        }
+        updateFocusBorder(focusedFrame: frame)
+    }
 }
