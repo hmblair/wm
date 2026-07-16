@@ -59,6 +59,11 @@ uninstall: unload
 	rm -rf $(APP_DIR)
 	rm -f $(CLI_LINK)
 	rm -f $(LAUNCHD_DIR)/$(PLIST_NAME)
+	@# Remove wm's global window corner-radius override unconditionally, so
+	@# uninstall cleans up even if the daemon was SIGKILL'd (its shutdown
+	@# handler never ran) and left the override in place.
+	@defaults delete -g NSConvolutionOverride1 2>/dev/null || true
+	@echo "Restored default window corner radius."
 
 load:
 	launchctl load -w $(LAUNCHD_DIR)/$(PLIST_NAME)
