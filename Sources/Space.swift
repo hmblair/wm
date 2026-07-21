@@ -64,8 +64,6 @@ func orderedSpaceIDs() -> [CGSSpaceID] {
     return orderedSpaces().map { $0.id }
 }
 
-let spaceKeyCodes: [UInt16] = [18, 19, 20, 21, 23, 22, 26, 28, 25]
-
 func postKeyEvent(keyCode: UInt16, flags: CGEventFlags = .maskControl) {
     let source = CGEventSource(stateID: .hidSystemState)
     let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)!

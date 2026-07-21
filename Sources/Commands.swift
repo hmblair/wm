@@ -91,18 +91,20 @@ func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
         return
     }
 
-    let winSpace = spaceForWindow(hit.id).map(String.init) ?? "?"
-
+    // spaceForWindow is a SkyLight IPC, so resolve it lazily: the managed branch
+    // needs the Space only for a debug string (wrapped in the debug autoclosure,
+    // which no-ops unless verbose), and the unmanaged branch reads it once for the
+    // on-current-space check and reuses that value for its own debug line.
     if let managed = plan.reconciledWindows[hit.id] {
         if managed.id != lastFocusedWindow {
-            debug("mouse: focus [\(managed.id)] (\(managed.name)) at \(Int(pos.x)),\(Int(pos.y)) space=\(winSpace) frame=\(formatFrame(hit.frame))")
+            debug("mouse: focus [\(managed.id)] (\(managed.name)) at \(Int(pos.x)),\(Int(pos.y)) space=\(spaceForWindow(hit.id).map(String.init) ?? "?") frame=\(formatFrame(hit.frame))")
             plan.focusAction = .window(managed)
             plan.newLastFocusedWindow = managed.id
         }
     } else if let app = NSRunningApplication(processIdentifier: hit.pid) {
-        let onCurrentSpace = spaceForWindow(hit.id) == snap.spaceID
-        if !app.isActive && hit.layer == 0 && onCurrentSpace {
-            debug("mouse: activate [\(hit.id)] (\(hit.name) pid \(hit.pid)) at \(Int(pos.x)),\(Int(pos.y)) space=\(winSpace) frame=\(formatFrame(hit.frame))")
+        let hitSpace = spaceForWindow(hit.id)
+        if !app.isActive && hit.layer == 0 && hitSpace == snap.spaceID {
+            debug("mouse: activate [\(hit.id)] (\(hit.name) pid \(hit.pid)) at \(Int(pos.x)),\(Int(pos.y)) space=\(hitSpace.map(String.init) ?? "?") frame=\(formatFrame(hit.frame))")
             plan.focusAction = .activate(app)
         }
         plan.newLastFocusedWindow = 0

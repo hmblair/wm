@@ -135,7 +135,9 @@ func installPollTimer() {
 }
 
 func reloadConfig() {
-    let newConfig = loadConfig()
+    // Keep the running config if the edited file fails to parse, so a mid-session
+    // typo doesn't reset every setting to defaults until it's fixed.
+    let newConfig = loadConfig(fallbackOnError: config)
     let intervalChanged = newConfig.pollInterval != config.pollInterval
     let statusBarChanged = newConfig.statusBar != config.statusBar
     let focusBorderChanged = newConfig.focusBorder != config.focusBorder

@@ -210,7 +210,11 @@ struct Config: Decodable {
     }
 }
 
-func loadConfig(from path: String = Config.defaultPath) -> Config {
+// A missing file means "use defaults" and returns Config(). A file that exists
+// but fails to parse returns `fallbackOnError` if given, so a live reload keeps
+// the last-good config rather than resetting every setting on a transient typo;
+// only the initial load (no prior config) falls back to defaults.
+func loadConfig(from path: String = Config.defaultPath, fallbackOnError: Config? = nil) -> Config {
     guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else {
         return Config()
     }
@@ -218,7 +222,7 @@ func loadConfig(from path: String = Config.defaultPath) -> Config {
     do {
         return try TOMLDecoder().decode(Config.self, from: contents)
     } catch {
-        warn("config: failed to parse \(path): \(error)")
-        return Config()
+        warn("config: failed to parse \(path): \(error) — \(fallbackOnError != nil ? "keeping current config" : "using defaults")")
+        return fallbackOnError ?? Config()
     }
 }
