@@ -24,13 +24,15 @@ func computeTileFrames(
 ) -> [UInt32: CGRect] {
     var tileFrames: [UInt32: CGRect] = [:]
 
+    // Size constraints are independent of the display, so build the map once.
+    var constraints: [UInt32: (min: CGSize?, max: CGSize?)] = [:]
+    for (id, win) in managedWindows where win.minSize != nil || win.maxSize != nil {
+        constraints[id] = (min: win.minSize, max: win.maxSize)
+    }
+
     for (key, tree) in trees where key.spaceID == spaceID {
         guard let screen = screenForDisplayID(key.displayID) else { continue }
         let rect = visibleFrame(for: screen)
-        var constraints: [UInt32: (min: CGSize?, max: CGSize?)] = [:]
-        for (id, win) in managedWindows where win.minSize != nil || win.maxSize != nil {
-            constraints[id] = (min: win.minSize, max: win.maxSize)
-        }
         for (id, tileRect) in tree.computeFrames(rect: rect, gap: config.gap, constraints: constraints) {
             tileFrames[id] = tileRect
         }

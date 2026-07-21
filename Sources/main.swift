@@ -82,7 +82,12 @@ let lockInfo = "pid=\(getpid())\naccessibility=\(AXIsProcessTrusted() ? 1 : 0)\n
 ftruncate(lockFD, 0)
 _ = lockInfo.withCString { write(lockFD, $0, strlen($0)) }
 
-// --- Global state (mutated only in executePlan) ---
+// --- Global state ---
+// The tick pipeline commits its results here in executePlan, but several of these
+// are also written elsewhere on the main thread: the event tap updates
+// lastMousePosition and the pending-command queues, reloadConfig replaces config,
+// tick() bumps tickNumber, and the status bar flips statusBarOccupancyDirty. All
+// mutation stays on the main run loop, so there are no data races.
 
 var managedWindows: [UInt32: ManagedWindow] = [:]
 var bspTrees: [DisplaySpaceKey: BSPTree] = [:]
@@ -227,11 +232,14 @@ CGEvent.tapEnable(tap: tap, enable: true)
 
 // --- Main loop (read → compute → execute) ---
 
-// Idle-tick short-circuit. computePlan is a pure function of the snapshot, so
-// when the snapshot is identical to the last one we acted on and no input is
-// pending, recomputing would reproduce the already-applied state. In steady
-// state (stationary cursor, unchanged windows/Space) this skips the entire
-// reconcile → BSP → tile → status-bar pipeline, leaving only the cheap read.
+// Idle-tick short-circuit. computePlan reads the snapshot plus the committed
+// internal state (managedWindows, bspTrees, lastFocusedWindow, …), and executePlan
+// drives that state to a fixed point. So when the snapshot is identical to the last
+// one we acted on and no input is pending, recomputing would only reproduce the
+// already-applied state. In steady state (stationary cursor, unchanged
+// windows/Space) this skips the entire reconcile → BSP → tile → status-bar
+// pipeline, leaving only the cheap read. The pendingWarpToWindow check below is
+// load-bearing precisely because the plan depends on that state, not just the snapshot.
 
 struct WindowSig: Equatable {
     let id: UInt32

@@ -93,7 +93,10 @@ func moveWindowToSpace(axWindow: AXUIElement, spaceIndex: Int) {
     let pos = axPosition(of: axWindow)
     let size = axSize(of: axWindow)
 
-    let titleBar = CGPoint(x: pos.x + size.width / 2, y: pos.y + 15)
+    // Grab point for the synthetic drag: horizontally centered, and far enough
+    // below the top edge to land on the title bar rather than a window control.
+    let titleBarGrabInset: CGFloat = 15
+    let titleBar = CGPoint(x: pos.x + size.width / 2, y: pos.y + titleBarGrabInset)
     let source = CGEventSource(stateID: .hidSystemState)
 
     CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: titleBar, mouseButton: .left)!

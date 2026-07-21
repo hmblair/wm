@@ -3,6 +3,10 @@ import CoreGraphics
 import Foundation
 import TOMLKit
 
+// Default focus-border color (#89f498), the single source of truth for both the
+// config default and the border view's placeholder value.
+let defaultBorderColor = NSColor(srgbRed: 137 / 255, green: 244 / 255, blue: 152 / 255, alpha: 1)
+
 // Parse a "#rrggbb" / "#rgb" hex string into an NSColor. Returns nil on any
 // malformed input so callers can fall back to a default.
 func nsColor(fromHex hex: String) -> NSColor? {
@@ -128,7 +132,7 @@ struct Config: Decodable {
     // reverted on clean stop / `wm reset`. Set false to leave the system alone.
     var manageSystemSettings: Bool = true
     var focusBorder: Bool = false
-    var borderColor: NSColor = NSColor(srgbRed: 137 / 255, green: 244 / 255, blue: 152 / 255, alpha: 1)
+    var borderColor: NSColor = defaultBorderColor
     var borderWidth: CGFloat = 1
     // Corner radius. wm pins the global window corner radius
     // (NSConvolutionOverride1 on Tahoe) to this, so config.toml is the single

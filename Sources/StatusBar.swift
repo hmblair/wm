@@ -87,10 +87,8 @@ func updateStatusBar(activeSpace: CGSSpaceID) {
         let isActive = space.id == activeSpace
         let isOccupied = occupiedSpaces.contains(space.id)
 
-        let color: NSColor
-        if isActive { color = NSColor.labelColor }
-        else if isOccupied { color = NSColor.labelColor }
-        else { color = NSColor.tertiaryLabelColor }
+        // Active or occupied Spaces read as primary; empty Spaces are dimmed.
+        let color = (isActive || isOccupied) ? NSColor.labelColor : NSColor.tertiaryLabelColor
 
         let title: String
         if space.isFullScreen {

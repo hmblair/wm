@@ -13,7 +13,9 @@ import Cocoa
 // single config value drives both the rendered corners and the outline.
 
 private final class BorderView: NSView {
-    var borderColor: NSColor = NSColor(srgbRed: 137 / 255, green: 244 / 255, blue: 152 / 255, alpha: 1)
+    // Placeholders; setupFocusBorder overwrites all three from config before the
+    // view is ever shown.
+    var borderColor: NSColor = defaultBorderColor
     var borderWidth: CGFloat = 1
     var cornerRadius: CGFloat = 12  // matches the system window corner radius
 
