@@ -68,6 +68,8 @@ func executePlan(_ plan: TickPlan, snap: WorldSnapshot) {
     // frame, so the border tracks wm's own moves without a one-tick lag.
     if config.focusBorder {
         let frame = snap.focusedWindow.flatMap { focused -> CGRect? in
+            // No outline on native-fullscreen windows.
+            if focused.isFullScreen { return nil }
             if !snap.mouseDown, let tiled = plan.tileFrames[focused.id] { return tiled }
             return focused.frame.isEmpty ? nil : focused.frame
         }

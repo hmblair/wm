@@ -9,6 +9,7 @@ struct Window {
     let pid: Int32
     let name: String
     let frame: CGRect
+    var isFullScreen: Bool = false
 }
 
 func formatFrame(_ f: CGRect) -> String {
@@ -83,7 +84,17 @@ func getFocusedWindow(cgWindows: [CGWindowEntry]) -> Window? {
 
     let frame = cgWindows.first(where: { $0.id == windowID })?.frame ?? .zero
 
-    return Window(id: windowID, pid: frontApp.processIdentifier, name: frontApp.localizedName ?? "unknown", frame: frame)
+    // Only the focus border consumes this, so skip the extra AX read otherwise.
+    var isFullScreen = false
+    if config.focusBorder {
+        var fsRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(axWindow, "AXFullScreen" as CFString, &fsRef) == .success {
+            isFullScreen = (fsRef as? Bool) == true
+        }
+    }
+
+    return Window(id: windowID, pid: frontApp.processIdentifier,
+                  name: frontApp.localizedName ?? "unknown", frame: frame, isFullScreen: isFullScreen)
 }
 
 func findAXWindowByPidAndID(pid: Int32, windowID: UInt32) -> AXUIElement? {
