@@ -64,6 +64,9 @@ for arg in CommandLine.arguments.dropFirst() {
 
 // --- Single instance guard ---
 
+let lockDir = (wmLockPath as NSString).deletingLastPathComponent
+try? FileManager.default.createDirectory(
+    atPath: lockDir, withIntermediateDirectories: true)
 let lockFD = open(wmLockPath, O_CREAT | O_RDWR, 0o600)
 if lockFD < 0 || flock(lockFD, LOCK_EX | LOCK_NB) != 0 {
     fputs("wm: another instance is already running\n", stderr)

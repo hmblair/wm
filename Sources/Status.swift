@@ -1,8 +1,13 @@
 import Cocoa
 import CoreGraphics
 
-// Shared with main.swift's single-instance guard.
-let wmLockPath = "/tmp/wm.lock"
+// Shared with main.swift's single-instance guard. Kept under ~/.cache rather
+// than /tmp: macOS's periodic /tmp cleaner reaps files untouched for ~3 days,
+// and a long-lived daemon never re-touches its lock (flock doesn't bump atime).
+// If /tmp/wm.lock is swept while the daemon holds it, the daemon keeps its fd on
+// the now-orphaned inode while `wm stop`/`wm status` open the vanished path, fail
+// with ENOENT, and wrongly report the daemon stopped.
+let wmLockPath = "\(NSHomeDirectory())/.cache/wm/wm.lock"
 
 // MARK: - ANSI styling (only when stdout is a terminal)
 
