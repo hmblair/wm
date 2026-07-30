@@ -88,8 +88,14 @@ func refreshFocusBorderStyle() {
 func updateFocusBorder(focusedFrame: CGRect?) {
     guard let panel = borderWindow else { return }
 
+    // Hide by making the panel transparent, not by ordering it out. An
+    // orderOut/orderFront cycle around a native-fullscreen exit re-inserts the
+    // panel while the dying fullscreen Space is still frontmost; the window
+    // server then reassigns it to a single regular Space, silently dropping the
+    // canJoinAllSpaces stickiness — after which the border only ever appears on
+    // that one Space. Keeping the panel ordered in preserves its Space tags.
     guard let cg = focusedFrame, cg.width > 0, cg.height > 0 else {
-        if panel.isVisible { panel.orderOut(nil) }
+        if panel.alphaValue != 0 { panel.alphaValue = 0 }
         lastBorderFrame = nil
         return
     }
@@ -106,5 +112,6 @@ func updateFocusBorder(focusedFrame: CGRect?) {
         borderView?.needsDisplay = true
         lastBorderFrame = cocoa
     }
+    if panel.alphaValue != 1 { panel.alphaValue = 1 }
     if !panel.isVisible { panel.orderFrontRegardless() }
 }
