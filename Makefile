@@ -9,22 +9,22 @@ CLI_LINK = $(BIN_DIR)/wm
 SIGNING_IDENTITY ?= focus-follows-mouse
 PLIST_NAME = com.hmblair.wm.plist
 LAUNCHD_DIR = $(HOME)/Library/LaunchAgents
-VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "unknown")
-VERSION_FILE = Sources/Version.swift
+# Stamped into the bundle's Info.plist, which is where the binary reads its
+# version from. Source archives carry no git metadata, so fall back to a
+# placeholder rather than failing the build.
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 .DEFAULT_GOAL := build
 .PHONY: build install uninstall clean load unload start stop restart
 
-$(VERSION_FILE): .git/HEAD .git/index
-	@echo 'let appVersion = "$(VERSION)"' > $(VERSION_FILE)
-
-build: $(VERSION_FILE)
+build:
 	swift build -c release
 
 install: build
 	@mkdir -p $(APP_DIR)/Contents/MacOS
 	cp .build/release/wm $(BINARY)
-	cp resources/Info.plist $(APP_DIR)/Contents/Info.plist
+	@sed 's|__VERSION__|$(VERSION)|g' \
+		resources/Info.plist > $(APP_DIR)/Contents/Info.plist
 	codesign --force --sign "$(SIGNING_IDENTITY)" $(APP_DIR)
 	@# Symlink the binary onto PATH so `wm status` etc. can be run as a CLI.
 	@mkdir -p $(BIN_DIR)
@@ -35,7 +35,7 @@ install: build
 	@# The daemon applies its managed macOS settings (native tiling, Space
 	@# reordering, Switch-to-Desktop shortcuts, window corner radius) on start
 	@# and reverts them on stop — see SystemSettings.swift and `wm reset`.
-	@echo "Installed to $(APP_DIR)"
+	@echo "Installed $(VERSION) to $(APP_DIR)"
 	@echo "Linked CLI to $(CLI_LINK)"
 	@echo "Run 'wm start' to start the service."
 

@@ -25,6 +25,10 @@ wm stop        # stop the service
 make uninstall # remove binary and plist
 ```
 
+`make` is only needed to install. `swift build -c release` on its own produces a
+working binary under `.build/`; it reports its version as `dev`, since the
+version is stamped into the installed bundle's `Info.plist`.
+
 ## Usage
 
 ```
