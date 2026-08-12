@@ -35,9 +35,15 @@ private func updateConstraint(current: CGFloat?, actual: CGFloat) -> (CGFloat, B
     return (actual, current != actual)
 }
 
+// The window's live geometry, in the same top-left-origin screen coordinates as
+// the CG window bounds that reconciliation reads.
+private func observedFrame(of win: ManagedWindow) -> CGRect {
+    return CGRect(origin: axPosition(of: win.axWindow), size: axSize(of: win.axWindow))
+}
+
 private func detectSizeConstraints(win: ManagedWindow, requested: CGRect,
-                                   beforeSize: CGSize) -> Bool {
-    let actual = axSize(of: win.axWindow)
+                                   observed: CGRect, beforeSize: CGSize) -> Bool {
+    let actual = observed.size
 
     // Constraints are inferred from a window falling short of the size we asked
     // for, which only reveals a real limit if the window is actually acting on
@@ -51,9 +57,8 @@ private func detectSizeConstraints(win: ManagedWindow, requested: CGRect,
     // honored the requested position, or resized at all. Comparing position
     // against the request (not against where it started) still recognizes a
     // window that was already sitting at its constrained position.
-    let actualPos = axPosition(of: win.axWindow)
-    let honorsPosition = abs(actualPos.x - requested.origin.x) <= frameTolerance
-                      && abs(actualPos.y - requested.origin.y) <= frameTolerance
+    let honorsPosition = abs(observed.origin.x - requested.origin.x) <= frameTolerance
+                      && abs(observed.origin.y - requested.origin.y) <= frameTolerance
     let resized = abs(actual.width - beforeSize.width) > frameTolerance
                || abs(actual.height - beforeSize.height) > frameTolerance
     guard honorsPosition || resized else { return false }
@@ -123,9 +128,15 @@ func setWindowFrame(_ win: ManagedWindow, frame: CGRect) -> Bool {
         warn("tile: AX set size failed for [\(win.id)] (\(win.name)): \(sizeErr.rawValue)")
     }
 
+    // Record where the window actually landed, not what was asked for: a window
+    // that clamps to a minimum size keeps its own geometry, and everything
+    // downstream — tiling, focus, the focus border — needs the truth. Reading it
+    // back here also keeps it fresh within the tick, ahead of the next
+    // reconciliation pass.
+    let observed = observedFrame(of: win)
     let constraintDiscovered = detectSizeConstraints(
-        win: win, requested: frame, beforeSize: beforeSize)
-    win.frame = frame
+        win: win, requested: frame, observed: observed, beforeSize: beforeSize)
+    win.frame = observed
     return constraintDiscovered
 }
 

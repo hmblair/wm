@@ -62,16 +62,18 @@ func executePlan(_ plan: TickPlan, snap: WorldSnapshot) {
         lastMousePosition = CGPoint(x: frame.midX, y: frame.midY)
     }
 
-    // 6. Focus border. While the user drags or resizes (mouse down), follow the
-    // window's live CG frame so the border tracks it. Otherwise prefer the tile
-    // frame — the settled position we just enforced — over the possibly-stale CG
-    // frame, so the border tracks wm's own moves without a one-tick lag.
+    // 6. Focus border, drawn on the window's observed frame rather than the tile
+    // frame it was asked to take, so a window that clamps to a minimum size
+    // still gets an outline that matches it. Enforcement above refreshed that
+    // frame from the window itself, so this tracks wm's own moves without a
+    // one-tick lag; an unmanaged window (a dialog, an excluded app) has no
+    // enforced frame and falls back to the snapshot.
     if config.focusBorder {
         let frame = snap.focusedWindow.flatMap { focused -> CGRect? in
             // No outline on native-fullscreen windows.
             if focused.isFullScreen { return nil }
-            if !snap.mouseDown, let tiled = plan.tileFrames[focused.id] { return tiled }
-            return focused.frame.isEmpty ? nil : focused.frame
+            let observed = managedWindows[focused.id]?.frame ?? focused.frame
+            return observed.isEmpty ? nil : observed
         }
         updateFocusBorder(focusedFrame: frame)
     }
