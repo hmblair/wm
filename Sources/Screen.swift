@@ -7,12 +7,12 @@ func displayID(for point: CGPoint) -> CGDirectDisplayID {
     return count > 0 ? displayID : CGMainDisplayID()
 }
 
-func displayIDForScreen(_ screen: NSScreen) -> CGDirectDisplayID {
+func displayID(for screen: NSScreen) -> CGDirectDisplayID {
     return screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? CGMainDisplayID()
 }
 
-func screenForDisplayID(_ did: CGDirectDisplayID) -> NSScreen? {
-    return NSScreen.screens.first(where: { displayIDForScreen($0) == did })
+func screen(for did: CGDirectDisplayID) -> NSScreen? {
+    return NSScreen.screens.first(where: { displayID(for: $0) == did })
 }
 
 // AppKit's global coordinate origin is the bottom-left of the primary screen;

@@ -1,4 +1,5 @@
 import Foundation
+import ApplicationServices
 
 // launchd service control for the `wm start` / `wm stop` subcommands. These drive
 // the same launchd agent that `make install` sets up, so they mirror
@@ -37,6 +38,31 @@ func daemonHoldsLock(_ fd: Int32) -> Bool {
         return false
     }
     return true
+}
+
+// Acquires the exclusive single-instance lock for the daemon, exiting when
+// another instance already holds it. Returns the open descriptor, which must
+// stay open (holding the flock) for the daemon's lifetime.
+func acquireDaemonLock() -> Int32 {
+    let lockDir = (wmLockPath as NSString).deletingLastPathComponent
+    try? FileManager.default.createDirectory(
+        atPath: lockDir, withIntermediateDirectories: true)
+    let fd = open(wmLockPath, O_CREAT | O_RDWR, 0o600)
+    if fd < 0 || flock(fd, LOCK_EX | LOCK_NB) != 0 {
+        fputs("wm: another instance is already running\n", stderr)
+        exit(1)
+    }
+    return fd
+}
+
+// Records runtime info in the lock file so `wm status` (a separate process) can
+// report the daemon's pid, Accessibility grant, and tiling mode. The CLI can't
+// query the daemon's Accessibility itself: AXIsProcessTrusted reflects the
+// invoking process, not the launchd-launched app, so only the daemon knows.
+func writeDaemonLockInfo(fd: Int32, tilingEnabled: Bool) {
+    let info = "pid=\(getpid())\naccessibility=\(AXIsProcessTrusted() ? 1 : 0)\ntiling=\(tilingEnabled ? 1 : 0)\n"
+    ftruncate(fd, 0)
+    _ = info.withCString { write(fd, $0, strlen($0)) }
 }
 
 func daemonIsRunning() -> Bool {

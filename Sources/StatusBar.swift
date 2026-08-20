@@ -44,9 +44,9 @@ func teardownStatusBar() {
     statusBarOccupancyDirty = true
 }
 
-func updateStatusBar(activeSpace: CGSSpaceID) {
-    guard let stack = stackView else { return }
-
+// Returns the cached occupied-Space set, recomputing it only when executePlan
+// has marked it dirty (see statusBarOccupancyDirty).
+private func occupiedSpaces() -> Set<CGSSpaceID> {
     if statusBarOccupancyDirty {
         var occupied: Set<CGSSpaceID> = []
         for (_, win) in managedWindows {
@@ -57,35 +57,43 @@ func updateStatusBar(activeSpace: CGSSpaceID) {
         cachedOccupied = occupied
         statusBarOccupancyDirty = false
     }
-    let occupiedSpaces = cachedOccupied
+    return cachedOccupied
+}
 
+// Adds or removes labels so the stack holds exactly one per Space.
+private func matchLabelCount(stack: NSStackView, to count: Int) {
+    while stack.arrangedSubviews.count < count {
+        stack.addArrangedSubview(SpaceButton())
+    }
+    while stack.arrangedSubviews.count > count {
+        let view = stack.arrangedSubviews.last!
+        stack.removeArrangedSubview(view)
+        view.removeFromSuperview()
+    }
+}
+
+func updateStatusBar(activeSpace: CGSSpaceID) {
+    guard let stack = stackView else { return }
+
+    let occupied = occupiedSpaces()
     let spaces = orderedSpaces()
     let spaceIDs = spaces.map { $0.id }
 
     // Skip update if nothing changed
     guard spaceIDs != lastRenderedSpaces
        || activeSpace != lastRenderedActive
-       || occupiedSpaces != lastRenderedOccupied else { return }
+       || occupied != lastRenderedOccupied else { return }
 
     lastRenderedSpaces = spaceIDs
     lastRenderedActive = activeSpace
-    lastRenderedOccupied = occupiedSpaces
+    lastRenderedOccupied = occupied
 
-    // Add/remove labels to match space count
-    while stack.arrangedSubviews.count < spaces.count {
-        let label = SpaceButton()
-        stack.addArrangedSubview(label)
-    }
-    while stack.arrangedSubviews.count > spaces.count {
-        let view = stack.arrangedSubviews.last!
-        stack.removeArrangedSubview(view)
-        view.removeFromSuperview()
-    }
+    matchLabelCount(stack: stack, to: spaces.count)
 
     let labels = spaceLabels(for: spaces)
     for (i, space) in spaces.enumerated() {
         let isActive = space.id == activeSpace
-        let isOccupied = occupiedSpaces.contains(space.id)
+        let isOccupied = occupied.contains(space.id)
 
         // Active or occupied Spaces read as primary; empty Spaces are dimmed.
         let color = (isActive || isOccupied) ? NSColor.labelColor : NSColor.tertiaryLabelColor

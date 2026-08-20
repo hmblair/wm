@@ -7,7 +7,7 @@ import TOMLKit
 // config default and the border view's placeholder value.
 let defaultBorderColor = NSColor(srgbRed: 137 / 255, green: 244 / 255, blue: 152 / 255, alpha: 1)
 
-// Parse a "#rrggbb" / "#rgb" hex string into an NSColor. Returns nil on any
+// Parses a "#rrggbb" / "#rgb" hex string into an NSColor. Returns nil on any
 // malformed input so callers can fall back to a default.
 func nsColor(fromHex hex: String) -> NSColor? {
     var s = hex.trimmingCharacters(in: .whitespaces)

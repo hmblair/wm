@@ -64,26 +64,13 @@ for arg in CommandLine.arguments.dropFirst() {
 
 // --- Single instance guard ---
 
-let lockDir = (wmLockPath as NSString).deletingLastPathComponent
-try? FileManager.default.createDirectory(
-    atPath: lockDir, withIntermediateDirectories: true)
-let lockFD = open(wmLockPath, O_CREAT | O_RDWR, 0o600)
-if lockFD < 0 || flock(lockFD, LOCK_EX | LOCK_NB) != 0 {
-    fputs("wm: another instance is already running\n", stderr)
-    exit(1)
-}
+let lockFD = acquireDaemonLock()
 
 let verbose = CommandLine.arguments.contains("--verbose") || CommandLine.arguments.contains("-v")
 let tilingEnabled = !CommandLine.arguments.contains("--no-tile")
 var config = loadConfig()
 
-// Record runtime info in the lock file so `wm status` (a separate process) can
-// report the daemon's pid, Accessibility grant, and tiling mode. The CLI can't
-// query the daemon's Accessibility itself: AXIsProcessTrusted reflects the
-// invoking process, not the launchd-launched app, so only the daemon knows.
-let lockInfo = "pid=\(getpid())\naccessibility=\(AXIsProcessTrusted() ? 1 : 0)\ntiling=\(tilingEnabled ? 1 : 0)\n"
-ftruncate(lockFD, 0)
-_ = lockInfo.withCString { write(lockFD, $0, strlen($0)) }
+writeDaemonLockInfo(fd: lockFD, tilingEnabled: tilingEnabled)
 
 // --- Global state ---
 // The tick pipeline commits its results here in executePlan, but several of these
@@ -125,7 +112,7 @@ var configWatcher: DispatchSourceFileSystemObject?
 var configFileWatcher: DispatchSourceFileSystemObject?
 var pollTimer: CFRunLoopTimer?
 
-// (Re)install the main-loop timer at the current poll interval. The interval is
+// (Re)installs the main-loop timer at the current poll interval. The interval is
 // baked into a CFRunLoopTimer at creation, so a live poll_rate change means
 // invalidating the old timer and scheduling a fresh one.
 func installPollTimer() {
@@ -169,7 +156,7 @@ func reloadConfig() {
     applySystemSettings()
 }
 
-// Watch the config file itself for in-place edits (truncate + write to the same
+// Watches the config file itself for in-place edits (truncate + write to the same
 // inode), which the directory watch below cannot see. An atomic save (write
 // temp + rename over) unlinks the watched inode, so re-arm on .delete/.rename;
 // the directory watch re-arms it too as a backstop.
@@ -223,7 +210,10 @@ if config.keybindings.enabled {
     eventMask |= CGEventMask(1 << CGEventType.keyDown.rawValue)
 }
 
-let tap = createEventTap(eventMask: eventMask)
+guard let tap = createEventTap(eventMask: eventMask) else {
+    warn("tap: could not create event tap — grant accessibility permissions")
+    exit(1)
+}
 globalTap = tap
 let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
 CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)

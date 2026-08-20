@@ -77,67 +77,17 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
 
     // 3. Process key commands (pure BSP/focus transforms)
     if !snap.commands.isEmpty {
-        let resolved = snap.focusedWindow.flatMap {
-            resolveManaged(for: $0, in: plan.reconciledWindows)
-        }
-        let anchor = resolved ?? plan.reconciledWindows.values.min(by: {
-            hypot($0.frame.midX - snap.mousePosition.x, $0.frame.midY - snap.mousePosition.y) <
-            hypot($1.frame.midX - snap.mousePosition.x, $1.frame.midY - snap.mousePosition.y)
-        })
-        if let managed = anchor {
-            debug("cmd: anchor [\(managed.id)] (\(managed.name))")
-            if resolved == nil {
-                // Desktop focused — just focus the nearest window
-                debug("cmd: desktop focus [\(managed.id)] (\(managed.name))")
-                plan.focusAction = .window(managed)
-                plan.warpTo = managed.frame
-                plan.newLastFocusedWindow = managed.id
-            } else {
-                for cmd in snap.commands {
-                    if cmd.swap {
-                        computeSwap(managed: managed, direction: cmd.direction,
-                                    spaceID: snap.spaceID, plan: &plan)
-                    } else {
-                        computeFocus(managed: managed, direction: cmd.direction, plan: &plan)
-                    }
-                }
-            }
-        } else {
-            debug("cmd: no anchor found, focused=\(snap.focusedWindow?.id ?? 0) mouse=\(Int(snap.mousePosition.x)),\(Int(snap.mousePosition.y)) managed=\(plan.reconciledWindows.count)")
-        }
+        computeKeyCommands(snap: snap, plan: &plan)
     }
 
     // 3b. Process rotate command
-    if snap.rotate, tilingEnabled, let focused = snap.focusedWindow,
-       let managed = resolveManaged(for: focused, in: plan.reconciledWindows) {
-        let focusCenter = CGPoint(x: managed.frame.midX, y: managed.frame.midY)
-        let did = displayID(for: focusCenter)
-        let key = DisplaySpaceKey(displayID: did, spaceID: snap.spaceID)
-        if let tree = plan.updatedTrees[key],
-           let rotated = tree.rotatingParent(of: managed.id) {
-            debug("cmd: rotate parent of [\(managed.id)] (\(managed.name))")
-            plan.updatedTrees[key] = rotated
-            plan.warpToWindow = managed.id
-        }
+    if snap.rotate {
+        computeRotate(snap: snap, plan: &plan)
     }
 
     // 4. Process move-to-space commands
-    if !snap.moveCommands.isEmpty, let focused = snap.focusedWindow,
-       let managed = resolveManaged(for: focused, in: plan.reconciledWindows) {
-        if let spaceIndex = snap.moveCommands.last {
-            let spaces = orderedSpaceIDs()
-            if spaceIndex < spaces.count && spaces[spaceIndex] != snap.spaceID {
-                log("space: move [\(managed.id)] (\(managed.name)) → space \(spaceIndex + 1)")
-                plan.moveToSpace = (managed.axWindow, spaceIndex)
-                plan.reconciledWindows.removeValue(forKey: managed.id)
-                plan.setPendingWarp = managed.id
-                plan.updatedTrees = computeBSPTrees(
-                    managedWindows: plan.reconciledWindows,
-                    currentTrees: plan.updatedTrees,
-                    spaceID: snap.spaceID,
-                    lastActiveSpace: snap.spaceID)
-            }
-        }
+    if !snap.moveCommands.isEmpty {
+        computeMoveToSpace(snap: snap, plan: &plan)
     }
 
     // 5. Compute tile frames from final trees
@@ -148,38 +98,119 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
             spaceID: snap.spaceID)
     }
 
-    // 6. Resolve deferred warp-to-window (set by computeSwap)
+    // 6. Resolve warps deferred until tile frames exist
+    computeDeferredWarps(plan: &plan)
+
+    // 7. Mouse focus (only if no command already set focus/warp and no pending warp)
+    if plan.focusAction == nil && plan.warpTo == nil
+        && pendingWarpToWindow == 0 && plan.setPendingWarp == 0 {
+        computeMouseFocus(snap: snap, plan: &plan)
+    }
+
+    // 8. External focus tracking
+    if plan.focusAction == nil && plan.warpTo == nil {
+        computeExternalFocusFollow(snap: snap, plan: &plan)
+    }
+
+    return plan
+}
+
+// Applies the queued focus/swap key commands to the plan, anchored on the
+// focused window. With the desktop focused, the anchor falls back to the window
+// nearest the cursor, and the command just focuses it.
+private func computeKeyCommands(snap: WorldSnapshot, plan: inout TickPlan) {
+    let resolved = snap.focusedWindow.flatMap {
+        resolveManaged(for: $0, in: plan.reconciledWindows)
+    }
+    let anchor = resolved ?? plan.reconciledWindows.values.min(by: {
+        hypot($0.frame.midX - snap.mousePosition.x, $0.frame.midY - snap.mousePosition.y) <
+        hypot($1.frame.midX - snap.mousePosition.x, $1.frame.midY - snap.mousePosition.y)
+    })
+    guard let managed = anchor else {
+        debug("cmd: no anchor found, focused=\(snap.focusedWindow?.id ?? 0) mouse=\(Int(snap.mousePosition.x)),\(Int(snap.mousePosition.y)) managed=\(plan.reconciledWindows.count)")
+        return
+    }
+
+    debug("cmd: anchor [\(managed.id)] (\(managed.name))")
+    guard resolved != nil else {
+        debug("cmd: desktop focus [\(managed.id)] (\(managed.name))")
+        plan.focusAction = .window(managed)
+        plan.warpTo = managed.frame
+        plan.newLastFocusedWindow = managed.id
+        return
+    }
+
+    for cmd in snap.commands {
+        if cmd.swap {
+            computeSwap(managed: managed, direction: cmd.direction,
+                        spaceID: snap.spaceID, plan: &plan)
+        } else {
+            computeFocus(managed: managed, direction: cmd.direction, plan: &plan)
+        }
+    }
+}
+
+// Rotates the split above the focused window and warps to it afterwards.
+private func computeRotate(snap: WorldSnapshot, plan: inout TickPlan) {
+    guard tilingEnabled, let focused = snap.focusedWindow,
+          let managed = resolveManaged(for: focused, in: plan.reconciledWindows) else { return }
+    let focusCenter = CGPoint(x: managed.frame.midX, y: managed.frame.midY)
+    let did = displayID(for: focusCenter)
+    let key = DisplaySpaceKey(displayID: did, spaceID: snap.spaceID)
+    if let tree = plan.updatedTrees[key],
+       let rotated = tree.rotatingParent(of: managed.id) {
+        debug("cmd: rotate parent of [\(managed.id)] (\(managed.name))")
+        plan.updatedTrees[key] = rotated
+        plan.warpToWindow = managed.id
+    }
+}
+
+// Plans the focused window's move to another Space: drops it from the managed
+// set, rebuilds the trees without it, and defers the warp until the window has
+// landed on the target Space.
+private func computeMoveToSpace(snap: WorldSnapshot, plan: inout TickPlan) {
+    guard let focused = snap.focusedWindow,
+          let managed = resolveManaged(for: focused, in: plan.reconciledWindows),
+          let spaceIndex = snap.moveCommands.last else { return }
+    let spaces = orderedSpaceIDs()
+    guard spaceIndex < spaces.count && spaces[spaceIndex] != snap.spaceID else { return }
+
+    log("space: move [\(managed.id)] (\(managed.name)) → space \(spaceIndex + 1)")
+    plan.moveToSpace = (managed.axWindow, spaceIndex)
+    plan.reconciledWindows.removeValue(forKey: managed.id)
+    plan.setPendingWarp = managed.id
+    plan.updatedTrees = computeBSPTrees(
+        managedWindows: plan.reconciledWindows,
+        currentTrees: plan.updatedTrees,
+        spaceID: snap.spaceID,
+        lastActiveSpace: snap.spaceID)
+}
+
+// Resolves warps that had to wait for tile frames: the warp-to-window set by
+// computeSwap/computeRotate this tick, and the pending warp left by a previous
+// tick's move-to-space.
+private func computeDeferredWarps(plan: inout TickPlan) {
     if let wid = plan.warpToWindow, let frame = plan.tileFrames[wid] {
         plan.warpTo = frame
     }
-
-    // 7. Resolve pending warp from previous tick's move-to-space
     if pendingWarpToWindow != 0 && plan.warpTo == nil {
         if let tileFrame = plan.tileFrames[pendingWarpToWindow] {
             plan.warpTo = tileFrame
             plan.clearPendingWarp = true
         }
     }
+}
 
-    // 8. Mouse focus (only if no command already set focus/warp and no pending warp)
-    if plan.focusAction == nil && plan.warpTo == nil
-        && pendingWarpToWindow == 0 && plan.setPendingWarp == 0 {
-        computeMouseFocus(snap: snap, plan: &plan)
-    }
-
-    // 9. External focus tracking — when focus moves to a managed window outside
-    //    our control (e.g. Cmd+Tab), warp the mouse to it so the focus-follows-mouse
-    //    pass doesn't immediately steal it back. Only follow managed windows: a modal
-    //    sheet or dialog is unmanaged, and warping to its frame would snap the
-    //    cursor to the center of the subwindow whenever the user just moves the
-    //    mouse toward the parent window.
-    if plan.focusAction == nil && plan.warpTo == nil,
-       let focused = snap.focusedWindow,
-       focused.id != lastFocusedWindow && lastFocusedWindow != 0,
-       let frame = plan.tileFrames[focused.id] ?? plan.reconciledWindows[focused.id]?.frame {
-        plan.warpTo = frame
-        plan.newLastFocusedWindow = focused.id
-    }
-
-    return plan
+// When focus moves to a managed window outside our control (e.g. Cmd+Tab),
+// warps the mouse to it so the focus-follows-mouse pass doesn't immediately
+// steal it back. Only follows managed windows: a modal sheet or dialog is
+// unmanaged, and warping to its frame would snap the cursor to the center of
+// the subwindow whenever the user just moves the mouse toward the parent window.
+private func computeExternalFocusFollow(snap: WorldSnapshot, plan: inout TickPlan) {
+    guard let focused = snap.focusedWindow,
+          focused.id != lastFocusedWindow && lastFocusedWindow != 0,
+          let frame = plan.tileFrames[focused.id] ?? plan.reconciledWindows[focused.id]?.frame
+    else { return }
+    plan.warpTo = frame
+    plan.newLastFocusedWindow = focused.id
 }

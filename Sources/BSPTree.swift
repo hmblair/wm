@@ -83,7 +83,7 @@ indirect enum BSPTree {
         }
     }
 
-    /// Round each edge of the rect to a whole point. Splits and gap insets can
+    /// Rounds each edge of the rect to a whole point. Splits and gap insets can
     /// produce fractional coordinates, which apps round unpredictably; rounding
     /// the edges (not origin and size separately) keeps adjacent tiles flush.
     private func roundEdges(_ rect: CGRect) -> CGRect {
@@ -252,7 +252,7 @@ func buildBSPTree(windowIDs: [UInt32], splitVertical: Bool) -> BSPTree? {
 
 // MARK: - Spatial BSP fitting
 
-/// Build a template tree with placeholder leaf IDs (0..<n) for a given
+/// Builds a template tree with placeholder leaf IDs (0..<n) for a given
 /// split-orientation bitmask. Bit i controls whether internal node i
 /// splits vertically (1) or horizontally (0).
 private func buildTemplate(count: Int, splitMask: UInt32) -> BSPTree {
@@ -271,7 +271,7 @@ private func buildTemplate(count: Int, splitMask: UInt32) -> BSPTree {
     return build(count, parentVertical: nil)
 }
 
-/// Check that every split whose children are both leaves uses the preferred orientation.
+/// Checks that every split whose children are both leaves uses the preferred orientation.
 private func respectsPreference(_ tree: BSPTree, prefer: SplitPreference) -> Bool {
     switch tree {
     case .leaf: return true
@@ -296,7 +296,7 @@ private func alternates(_ tree: BSPTree, parentVertical: Bool? = nil) -> Bool {
     }
 }
 
-/// Replace placeholder leaf IDs (in tree-order) with the given window IDs.
+/// Replaces placeholder leaf IDs (in tree-order) with the given window IDs.
 private func assignIDs(_ tree: BSPTree, ids: [UInt32]) -> BSPTree {
     var idx = 0
     func walk(_ node: BSPTree) -> BSPTree {
@@ -320,7 +320,7 @@ private func l2Cost(_ a: CGRect, _ b: CGRect) -> CGFloat {
     return dx * dx + dy * dy + dw * dw + dh * dh
 }
 
-/// Greedily assign windows to tile slots by closest match.
+/// Greedily assigns windows to tile slots by closest match.
 /// Returns (assignment, totalCost) where assignment[i] is the window index for tile i.
 private func greedyMatch(tileFrames: [CGRect], windowFrames: [CGRect]) -> (assignment: [Int], cost: CGFloat) {
     let n = tileFrames.count
@@ -349,7 +349,7 @@ private func greedyMatch(tileFrames: [CGRect], windowFrames: [CGRect]) -> (assig
     return (assignment, totalCost)
 }
 
-/// Build the BSP tree that best matches the current window positions.
+/// Builds the BSP tree that best matches the current window positions.
 func buildBSPTreeFitting(windows: [ManagedWindow], rect: CGRect, gap: CGFloat, prefer: SplitPreference = .none) -> BSPTree? {
     let n = windows.count
     guard n > 0 else { return nil }

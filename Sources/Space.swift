@@ -78,7 +78,7 @@ func spaceLabels(for spaces: [SpaceInfo]) -> [String] {
     }
 }
 
-func postKeyEvent(keyCode: UInt16, flags: CGEventFlags = .maskControl) {
+func postKeyEvent(keyCode: UInt16, flags: CGEventFlags) {
     let source = CGEventSource(stateID: .hidSystemState)
     let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)!
     keyDown.flags = flags

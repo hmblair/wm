@@ -67,20 +67,18 @@ private func daemonStatus() -> DaemonInfo {
 
 // MARK: - `wm status`
 
-func runStatus() -> Never {
-    let info = daemonStatus()
-    let active = activeSpaceID()
-    let spaces = orderedSpaces()
+private func row(_ label: String, _ value: String) {
+    let padded = label.padding(toLength: 15, withPad: " ", startingAt: 0)
+    print("  \(Style.grey(padded))\(value)")
+}
 
-    func row(_ label: String, _ value: String) {
-        let padded = label.padding(toLength: 15, withPad: " ", startingAt: 0)
-        print("  \(Style.grey(padded))\(value)")
-    }
-
+private func printHeader(_ info: DaemonInfo) {
     print("")
     print("  \(info.running ? Style.green("●") : Style.red("●")) \(Style.bold("wm")) \(Style.grey(appVersion))")
     print("")
+}
 
+private func printDaemonRows(_ info: DaemonInfo) {
     if info.running {
         let detail = info.pid.map { Style.grey(" (pid \($0))") } ?? ""
         row("Daemon", Style.green("running") + detail)
@@ -101,34 +99,40 @@ func runStatus() -> Never {
     if let tiling = info.tiling {
         row("Tiling", tiling ? Style.green("on") : Style.grey("off"))
     }
+}
 
-    print("")
-
-    // Spaces: desktops numbered, fullscreen shown by app initial, active bracketed.
+// Spaces: desktops numbered, fullscreen shown by app initial, active bracketed.
+private func printSpacesRow() {
+    let active = activeSpaceID()
+    let spaces = orderedSpaces()
     let rendered = zip(spaces, spaceLabels(for: spaces)).map { sp, label in
         sp.id == active ? Style.bold(Style.green("[\(label)]")) : Style.grey(label)
     }
     row("Spaces", rendered.joined(separator: " "))
+}
 
+private func printDisplaysRow() {
     let screens = NSScreen.screens
     let displays = screens.map { s -> String in
         let lw = Int(s.frame.width), lh = Int(s.frame.height)
         var res = "\(lw)×\(lh)"
         // On retina/scaled displays the frame is in logical points; show the
         // true backing pixels from the current mode, with the logical size grey.
-        if let mode = CGDisplayCopyDisplayMode(displayIDForScreen(s)),
+        if let mode = CGDisplayCopyDisplayMode(displayID(for: s)),
            mode.pixelWidth != lw || mode.pixelHeight != lh {
             res = "\(mode.pixelWidth)×\(mode.pixelHeight)\(Style.grey(" (\(lw)×\(lh))"))"
         }
         return s == screens.first ? "\(res)\(Style.grey(" primary"))" : res
     }.joined(separator: Style.grey(", "))
     row("Displays", "\(screens.count)  \(Style.grey("·"))  \(displays)")
+}
 
+private func printWindowsRow() {
     let windows = fetchCGWindowList().filter { $0.layer == standardWindowLayer }.count
     row("Windows", "\(windows)\(Style.grey(" on active space"))")
+}
 
-    print("")
-
+private func printConfigRows() {
     let cfgPath = Config.defaultPath
     let abbrev = cfgPath.replacingOccurrences(of: NSHomeDirectory(), with: "~")
     let cfg = loadConfig()
@@ -140,7 +144,18 @@ func runStatus() -> Never {
     row("Gap", "\(Int(cfg.gap))px")
     row("Keybindings", cfg.keybindings.enabled ? Style.green("on") : Style.grey("off"))
     row("Status bar", cfg.statusBar ? Style.green("on") : Style.grey("off"))
+}
 
+func runStatus() -> Never {
+    let info = daemonStatus()
+    printHeader(info)
+    printDaemonRows(info)
+    print("")
+    printSpacesRow()
+    printDisplaysRow()
+    printWindowsRow()
+    print("")
+    printConfigRows()
     print("")
     exit(0)
 }

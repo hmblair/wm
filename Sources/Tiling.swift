@@ -36,7 +36,7 @@ func computeTileFrames(
     }
 
     for (key, tree) in trees where key.spaceID == spaceID {
-        guard let screen = screenForDisplayID(key.displayID) else { continue }
+        guard let screen = screen(for: key.displayID) else { continue }
         let rect = visibleFrame(for: screen)
         for (id, tileRect) in tree.computeFrames(rect: rect, gap: config.gap, constraints: constraints) {
             tileFrames[id] = tileRect
@@ -96,7 +96,7 @@ func computeBSPTrees(
 
         let orderedWindows = orderedIDs.compactMap { managedWindows[$0] }
         debug("tile: rebuild BSP display \(key.displayID) space \(key.spaceID) — \(orderedIDs.count) windows: \(orderedIDs)")
-        if let screen = screenForDisplayID(key.displayID) {
+        if let screen = screen(for: key.displayID) {
             let rect = visibleFrame(for: screen)
             trees[key] = buildBSPTreeFitting(windows: orderedWindows, rect: rect, gap: config.gap, prefer: config.prefer)
         } else {

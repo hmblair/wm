@@ -49,7 +49,8 @@ func handleEvent(
     return Unmanaged.passUnretained(event)
 }
 
-func createEventTap(eventMask: CGEventMask, maxRetries: Int = 10, baseDelay: UInt32 = 500_000) -> CFMachPort {
+// Returns nil when every attempt fails; the caller decides how to terminate.
+func createEventTap(eventMask: CGEventMask, maxRetries: Int = 10, baseDelay: UInt32 = 500_000) -> CFMachPort? {
     for attempt in 0..<maxRetries {
         if let tap = CGEvent.tapCreate(
             tap: .cghidEventTap, place: .headInsertEventTap, options: .defaultTap,
@@ -65,6 +66,5 @@ func createEventTap(eventMask: CGEventMask, maxRetries: Int = 10, baseDelay: UIn
         warn("tap: failed (attempt \(attempt + 1)/\(maxRetries)), retrying...")
         usleep(delay)
     }
-    warn("tap: failed after \(maxRetries) attempts — grant accessibility permissions")
-    exit(1)
+    return nil
 }

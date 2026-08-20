@@ -41,7 +41,7 @@ private func runTool(_ path: String, _ args: [String]) -> Bool {
     }
 }
 
-// Read/write a preference in an arbitrary domain (kCFPreferencesAnyApplication
+// Reads/writes a preference in an arbitrary domain (kCFPreferencesAnyApplication
 // for NSGlobalDomain). Writes return whether the value actually changed.
 private func prefValue(_ key: String, _ domain: CFString) -> CFPropertyList? {
     CFPreferencesCopyValue(key as CFString, domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
@@ -71,7 +71,7 @@ private func activateSettings() {
 
 // MARK: - Switch-to-Desktop shortcuts
 
-// Register (or, with enabled=false, disable) the "Switch to Desktop 1-9"
+// Registers (or, with enabled=false, disables) the "Switch to Desktop 1-9"
 // shortcuts. Each entry is merged into the AppleSymbolicHotKeys sub-dictionary
 // via `defaults -dict-add`, which handles the nested-dict merge and writes the
 // exact plist types the hotkey subsystem requires (a boolean enabled and
@@ -128,7 +128,7 @@ func applySystemSettings() {
     }
 }
 
-// Restore macOS defaults. Uses no config so `wm reset` can run it standalone.
+// Restores macOS defaults. Uses no config so `wm reset` can run it standalone.
 func revertSystemSettings() {
     setPref(cornerRadiusKey, nil, globalDomain)
     for key in edgeTilingKeys { setPref(key, nil, globalDomain) }
@@ -137,7 +137,7 @@ func revertSystemSettings() {
     lastAppliedSwitchModifier = nil
 }
 
-// `wm reset` — revert unconditionally (independent of config and daemon state),
+// `wm reset` — reverts unconditionally (independent of config and daemon state),
 // so it also cleans up after a hard kill that skipped the shutdown handler.
 func runReset() -> Never {
     revertSystemSettings()
