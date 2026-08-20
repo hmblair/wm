@@ -29,16 +29,21 @@ private func launchctl(_ args: [String]) -> String {
 }
 
 // The daemon holds an exclusive flock on the lock file for its lifetime, so a
-// separate process can detect it by failing to acquire that lock.
-func daemonIsRunning() -> Bool {
-    let fd = open(wmLockPath, O_RDWR)
-    guard fd >= 0 else { return false }
-    defer { close(fd) }
+// separate process can detect it by failing to acquire that lock. Returns
+// whether another process holds the lock on the given open descriptor.
+func daemonHoldsLock(_ fd: Int32) -> Bool {
     if flock(fd, LOCK_EX | LOCK_NB) == 0 {
         flock(fd, LOCK_UN)
         return false
     }
     return true
+}
+
+func daemonIsRunning() -> Bool {
+    let fd = open(wmLockPath, O_RDWR)
+    guard fd >= 0 else { return false }
+    defer { close(fd) }
+    return daemonHoldsLock(fd)
 }
 
 // The daemon starts (RunAtLoad) and stops (SIGTERM) asynchronously, so poll the

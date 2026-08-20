@@ -80,7 +80,7 @@ func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
     // whatever is behind it. Focusing the window behind would raise it over the
     // panel, so treat the panel as part of its owning app and stop here instead of
     // falling through. Raise the owner if focus has drifted off it.
-    if hit.layer != 0 && plan.reconciledWindows[hit.id] == nil {
+    if hit.layer != standardWindowLayer && plan.reconciledWindows[hit.id] == nil {
         if let owner = NSRunningApplication(processIdentifier: hit.pid),
            owner.activationPolicy == .regular, !owner.isActive,
            spaceForWindow(hit.id) == snap.spaceID {
@@ -103,7 +103,7 @@ func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
         }
     } else if let app = NSRunningApplication(processIdentifier: hit.pid) {
         let hitSpace = spaceForWindow(hit.id)
-        if !app.isActive && hit.layer == 0 && hitSpace == snap.spaceID {
+        if !app.isActive && hit.layer == standardWindowLayer && hitSpace == snap.spaceID {
             debug("mouse: activate [\(hit.id)] (\(hit.name) pid \(hit.pid)) at \(Int(pos.x)),\(Int(pos.y)) space=\(hitSpace.map(String.init) ?? "?") frame=\(formatFrame(hit.frame))")
             plan.focusAction = .activate(app)
         }

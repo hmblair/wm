@@ -16,7 +16,10 @@ func formatFrame(_ f: CGRect) -> String {
     return "\(Int(f.origin.x)),\(Int(f.origin.y)) \(Int(f.width))x\(Int(f.height))"
 }
 
-let manageableLayers: Set<Int> = [0, 1000]
+// Ordinary app windows sit at layer 0 (kCGNormalWindowLevel).
+let standardWindowLayer = 0
+
+let manageableLayers: Set<Int> = [standardWindowLayer, 1000]
 
 struct CGWindowEntry {
     let id: UInt32

@@ -82,22 +82,14 @@ func updateStatusBar(activeSpace: CGSSpaceID) {
         view.removeFromSuperview()
     }
 
-    var desktopNumber = 1
+    let labels = spaceLabels(for: spaces)
     for (i, space) in spaces.enumerated() {
         let isActive = space.id == activeSpace
         let isOccupied = occupiedSpaces.contains(space.id)
 
         // Active or occupied Spaces read as primary; empty Spaces are dimmed.
         let color = (isActive || isOccupied) ? NSColor.labelColor : NSColor.tertiaryLabelColor
-
-        let title: String
-        if space.isFullScreen {
-            title = appNameForSpace(space.id).flatMap { $0.first.map(String.init) } ?? "F"
-        } else {
-            title = "\(desktopNumber)"
-            desktopNumber += 1
-        }
-
+        let title = labels[i]
         let weight: NSFont.Weight = isActive ? .medium : .regular
         let label = stack.arrangedSubviews[i] as! SpaceButton
         label.attributedTitle = NSAttributedString(

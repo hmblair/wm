@@ -42,10 +42,7 @@ private func daemonStatus() -> DaemonInfo {
     guard fd >= 0 else { return info }
     defer { close(fd) }
 
-    if flock(fd, LOCK_EX | LOCK_NB) == 0 {
-        flock(fd, LOCK_UN)
-        return info // acquired the lock → no daemon is holding it
-    }
+    guard daemonHoldsLock(fd) else { return info }
     info.running = true
 
     var buf = [CChar](repeating: 0, count: 256)
@@ -91,8 +88,7 @@ func runStatus() -> Never {
         row("Daemon", Style.red("stopped"))
     }
 
-    let agent = ("~/Library/LaunchAgents/com.hmblair.wm.plist" as NSString).expandingTildeInPath
-    let autostart = FileManager.default.fileExists(atPath: agent)
+    let autostart = FileManager.default.fileExists(atPath: launchAgentPlistPath)
     row("Auto-start", autostart ? Style.green("enabled") : Style.red("disabled"))
 
     // Reported by the daemon itself (the CLI process can't see the daemon's grant).
@@ -109,21 +105,8 @@ func runStatus() -> Never {
     print("")
 
     // Spaces: desktops numbered, fullscreen shown by app initial, active bracketed.
-    var desktop = 0
-    var rendered: [String] = []
-    for sp in spaces {
-        let label: String
-        if sp.isFullScreen {
-            label = appNameForSpace(sp.id).flatMap { $0.first.map(String.init) } ?? "·"
-        } else {
-            desktop += 1
-            label = "\(desktop)"
-        }
-        if sp.id == active {
-            rendered.append(Style.bold(Style.green("[\(label)]")))
-        } else {
-            rendered.append(Style.grey(label))
-        }
+    let rendered = zip(spaces, spaceLabels(for: spaces)).map { sp, label in
+        sp.id == active ? Style.bold(Style.green("[\(label)]")) : Style.grey(label)
     }
     row("Spaces", rendered.joined(separator: " "))
 
@@ -141,7 +124,7 @@ func runStatus() -> Never {
     }.joined(separator: Style.grey(", "))
     row("Displays", "\(screens.count)  \(Style.grey("·"))  \(displays)")
 
-    let windows = fetchCGWindowList().filter { $0.layer == 0 }.count
+    let windows = fetchCGWindowList().filter { $0.layer == standardWindowLayer }.count
     row("Windows", "\(windows)\(Style.grey(" on active space"))")
 
     print("")

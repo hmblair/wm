@@ -100,12 +100,7 @@ func updateFocusBorder(focusedFrame: CGRect?) {
         return
     }
 
-    // CG uses a top-left origin measured from the primary display; Cocoa uses a
-    // bottom-left origin. Flip against the primary screen height, matching the
-    // cursor conversion in main.swift.
-    let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-    let cocoa = CGRect(
-        x: cg.minX, y: primaryHeight - cg.maxY, width: cg.width, height: cg.height)
+    let cocoa = flipVertical(cg)
 
     if lastBorderFrame != cocoa {
         panel.setFrame(cocoa, display: true)

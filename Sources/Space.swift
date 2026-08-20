@@ -64,6 +64,20 @@ func orderedSpaceIDs() -> [CGSSpaceID] {
     return orderedSpaces().map { $0.id }
 }
 
+// Returns a display label per Space, in order: desktops get their number, and a
+// native-fullscreen Space gets the first letter of its app's name (or "·" when
+// the app cannot be resolved). Shared by `wm status` and the status bar.
+func spaceLabels(for spaces: [SpaceInfo]) -> [String] {
+    var desktop = 0
+    return spaces.map { space in
+        if space.isFullScreen {
+            return appNameForSpace(space.id).flatMap { $0.first.map(String.init) } ?? "·"
+        }
+        desktop += 1
+        return "\(desktop)"
+    }
+}
+
 func postKeyEvent(keyCode: UInt16, flags: CGEventFlags = .maskControl) {
     let source = CGEventSource(stateID: .hidSystemState)
     let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)!
@@ -81,7 +95,7 @@ func appNameForSpace(_ spaceID: CGSSpaceID) -> String? {
 
     for info in infoList {
         guard let wid = info[kCGWindowNumber as String] as? UInt32,
-              let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
+              let layer = info[kCGWindowLayer as String] as? Int, layer == standardWindowLayer,
               let name = info[kCGWindowOwnerName as String] as? String
         else { continue }
         if spaceForWindow(wid) == spaceID { return name }

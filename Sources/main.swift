@@ -98,11 +98,7 @@ var lastActiveSpace: CGSSpaceID = 0
 var lastFocusedWindow: UInt32 = 0
 var pendingWarpToWindow: UInt32 = 0
 var tickNumber: UInt64 = 0
-var lastMousePosition: CGPoint = {
-    let nsPos = NSEvent.mouseLocation
-    let screenHeight = NSScreen.screens.first?.frame.height ?? 0
-    return CGPoint(x: nsPos.x, y: screenHeight - nsPos.y)
-}()
+var lastMousePosition: CGPoint = flipVertical(NSEvent.mouseLocation)
 
 // --- Signal handling ---
 

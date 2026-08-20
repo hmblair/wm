@@ -15,12 +15,21 @@ func screenForDisplayID(_ did: CGDirectDisplayID) -> NSScreen? {
     return NSScreen.screens.first(where: { displayIDForScreen($0) == did })
 }
 
+// AppKit's global coordinate origin is the bottom-left of the primary screen;
+// Quartz/CG's is the top-left. Both flips mirror around the primary screen's
+// height (so external monitors get the correct offset) and are their own
+// inverse, converting in either direction.
+func flipVertical(_ rect: CGRect) -> CGRect {
+    let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+    return CGRect(x: rect.minX, y: primaryHeight - rect.maxY,
+                  width: rect.width, height: rect.height)
+}
+
+func flipVertical(_ point: CGPoint) -> CGPoint {
+    let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+    return CGPoint(x: point.x, y: primaryHeight - point.y)
+}
+
 func visibleFrame(for screen: NSScreen) -> CGRect {
-    let visible = screen.visibleFrame
-    // AppKit's global coordinate origin is the bottom-left of the primary screen.
-    // Quartz/CG's origin is the top-left of the primary screen. Flip around the
-    // primary screen's height so external monitors get the correct y-offset.
-    let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
-    let y = primaryHeight - visible.maxY
-    return CGRect(x: visible.minX, y: y, width: visible.width, height: visible.height)
+    return flipVertical(screen.visibleFrame)
 }
