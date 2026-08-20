@@ -69,7 +69,7 @@ indirect enum BSPTree {
             }
             let x = inner.minX + (inner.width - w) / 2
             let y = inner.minY + (inner.height - h) / 2
-            return [(id, CGRect(x: x, y: y, width: w, height: h))]
+            return [(id, roundEdges(CGRect(x: x, y: y, width: w, height: h)))]
         case .split(let left, let right, let vertical, let ratio):
             let total = vertical ? rect.width : rect.height
             let splitPos = constrainedSplitPos(
@@ -81,6 +81,17 @@ indirect enum BSPTree {
             return left.tileFrames(rect: leftRect, gap: gap, constraints: constraints)
                  + right.tileFrames(rect: rightRect, gap: gap, constraints: constraints)
         }
+    }
+
+    /// Round each edge of the rect to a whole point. Splits and gap insets can
+    /// produce fractional coordinates, which apps round unpredictably; rounding
+    /// the edges (not origin and size separately) keeps adjacent tiles flush.
+    private func roundEdges(_ rect: CGRect) -> CGRect {
+        let minX = rect.minX.rounded()
+        let minY = rect.minY.rounded()
+        return CGRect(x: minX, y: minY,
+                      width: rect.maxX.rounded() - minX,
+                      height: rect.maxY.rounded() - minY)
     }
 
     private func splitRects(rect: CGRect, vertical: Bool, at splitPos: CGFloat) -> (CGRect, CGRect) {

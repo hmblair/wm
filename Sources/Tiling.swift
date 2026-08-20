@@ -3,14 +3,19 @@ import ApplicationServices
 
 let frameTolerance: CGFloat = 2
 
+// Tile frames are rounded to whole points, so a cooperating window can always
+// honor the requested position exactly. A tight tolerance snaps back a window
+// that drifts by a pixel, which the size tolerance would silently accept.
+let positionTolerance: CGFloat = 0.5
+
 struct DisplaySpaceKey: Hashable {
     let displayID: CGDirectDisplayID
     let spaceID: CGSSpaceID
 }
 
 func framesMatch(_ a: CGRect, _ b: CGRect) -> Bool {
-    return abs(a.origin.x - b.origin.x) <= frameTolerance
-        && abs(a.origin.y - b.origin.y) <= frameTolerance
+    return abs(a.origin.x - b.origin.x) <= positionTolerance
+        && abs(a.origin.y - b.origin.y) <= positionTolerance
         && abs(a.width - b.width) <= frameTolerance
         && abs(a.height - b.height) <= frameTolerance
 }
