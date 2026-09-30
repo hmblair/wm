@@ -84,6 +84,7 @@ var bspTrees: [DisplaySpaceKey: BSPTree] = [:]
 var lastActiveSpace: CGSSpaceID = 0
 var lastFocusedWindow: UInt32 = 0
 var pendingWarpToWindow: UInt32 = 0
+var dragSubject: UInt32 = 0
 var tickNumber: UInt64 = 0
 var lastMousePosition: CGPoint = flipVertical(NSEvent.mouseLocation)
 

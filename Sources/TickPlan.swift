@@ -58,6 +58,7 @@ struct TickPlan {
     var setPendingWarp: UInt32 = 0
     var clearPendingWarp: Bool = false
     var newLastActiveSpace: CGSSpaceID? = nil
+    var dragSubject: UInt32 = 0
 }
 
 func computePlan(_ snap: WorldSnapshot) -> TickPlan {
@@ -89,6 +90,9 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
     if !snap.moveCommands.isEmpty {
         computeMoveToSpace(snap: snap, plan: &plan)
     }
+
+    // 4b. Follow a mouse-driven resize
+    computeDragResize(snap: snap, plan: &plan)
 
     // 5. Compute tile frames from final trees
     if tilingEnabled {
@@ -154,9 +158,7 @@ private func computeKeyCommands(snap: WorldSnapshot, plan: inout TickPlan) {
 private func computeRotate(snap: WorldSnapshot, plan: inout TickPlan) {
     guard tilingEnabled, let focused = snap.focusedWindow,
           let managed = resolveManaged(for: focused, in: plan.reconciledWindows) else { return }
-    let focusCenter = CGPoint(x: managed.frame.midX, y: managed.frame.midY)
-    let did = displayID(for: focusCenter)
-    let key = DisplaySpaceKey(displayID: did, spaceID: snap.spaceID)
+    let key = displaySpaceKey(for: managed, spaceID: snap.spaceID)
     if let tree = plan.updatedTrees[key],
        let rotated = tree.rotatingParent(of: managed.id) {
         debug("cmd: rotate parent of [\(managed.id)] (\(managed.name))")
@@ -184,6 +186,52 @@ private func computeMoveToSpace(snap: WorldSnapshot, plan: inout TickPlan) {
         currentTrees: plan.updatedTrees,
         spaceID: snap.spaceID,
         lastActiveSpace: snap.spaceID)
+}
+
+// How far outside a window's frame the cursor can sit while grabbing its
+// resize handle.
+private let resizeHandleMargin: CGFloat = 10
+
+// Follows a window the user is resizing with the mouse. While the button is
+// held, the split ratios track the window's observed edges every tick so its
+// neighbors reflow live. The release tick applies the final edges and clears
+// the subject, so enforcement snaps the window itself to its tile.
+private func computeDragResize(snap: WorldSnapshot, plan: inout TickPlan) {
+    guard tilingEnabled else { return }
+    let tracked = plan.reconciledWindows[dragSubject]
+    guard let subject = tracked ?? (snap.mouseDown ? findDragSubject(snap: snap, plan: plan) : nil)
+    else { return }
+    applyObservedEdges(of: subject, spaceID: snap.spaceID, plan: &plan)
+    plan.dragSubject = snap.mouseDown ? subject.id : 0
+}
+
+// A resize in progress shows as a window sitting at a size other than its
+// tile while the cursor is on or just outside its frame. The cursor test uses
+// a margin because a grab on the handle that grows a window lands in the gap.
+// A window moved by its title bar keeps its size and is not a subject.
+private func findDragSubject(snap: WorldSnapshot, plan: TickPlan) -> ManagedWindow? {
+    let tileFrames = computeTileFrames(
+        trees: plan.updatedTrees, managedWindows: plan.reconciledWindows, spaceID: snap.spaceID)
+    let subject = plan.reconciledWindows.values.first { win in
+        guard let tile = tileFrames[win.id], sizeDiffers(win.frame, tile) else { return false }
+        let grabArea = win.frame.insetBy(dx: -resizeHandleMargin, dy: -resizeHandleMargin)
+        return grabArea.contains(snap.mousePosition)
+    }
+    if let win = subject { debug("drag: resize [\(win.id)] (\(win.name))") }
+    return subject
+}
+
+private func sizeDiffers(_ a: CGRect, _ b: CGRect) -> Bool {
+    return abs(a.width - b.width) > frameTolerance || abs(a.height - b.height) > frameTolerance
+}
+
+// Writes the window's observed edges into the split ratios of its tree.
+private func applyObservedEdges(of win: ManagedWindow, spaceID: CGSSpaceID, plan: inout TickPlan) {
+    let key = displaySpaceKey(for: win, spaceID: spaceID)
+    guard let tree = plan.updatedTrees[key], let screen = screen(for: key.displayID) else { return }
+    plan.updatedTrees[key] = tree.adjustingSplits(
+        for: win.id, observed: win.frame, rect: visibleFrame(for: screen), gap: config.gap,
+        constraints: sizeConstraints(of: plan.reconciledWindows))
 }
 
 // Resolves warps that had to wait for tile frames: the warp-to-window set by

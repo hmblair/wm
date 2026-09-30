@@ -377,3 +377,101 @@ func buildBSPTreeFitting(windows: [ManagedWindow], rect: CGRect, gap: CGFloat, p
 
     return bestTree
 }
+
+// MARK: - Drag resize
+
+/// The four edges of a tile, named from the window's point of view.
+enum TileEdge {
+    case left, right, top, bottom
+}
+
+/// The smallest extent a split leaves to either side. A drag past this point
+/// pins the split here rather than collapsing the neighbor.
+let minimumSplitExtent: CGFloat = 50
+
+extension BSPTree {
+
+    /// Returns the tree with its split ratios changed so that the window's
+    /// moved edges land where they are observed. Each moved edge belongs to the
+    /// deepest ancestor split of the matching axis that has the window on the
+    /// side facing that edge, and only that split's ratio changes.
+    func adjustingSplits(for id: UInt32, observed: CGRect, rect: CGRect, gap: CGFloat,
+                         constraints: SizeConstraints = [:]) -> BSPTree {
+        return adjustSplits(for: id, observed: observed,
+                            rect: rect.insetBy(dx: gap / 2, dy: gap / 2),
+                            gap: gap, constraints: constraints).tree
+    }
+
+    private func adjustSplits(for id: UInt32, observed: CGRect, rect: CGRect, gap: CGFloat,
+                              constraints: SizeConstraints) -> (tree: BSPTree, movedEdges: Set<TileEdge>) {
+        switch self {
+        case .leaf(let wid):
+            guard wid == id else { return (self, []) }
+            let tile = rect.insetBy(dx: gap / 2, dy: gap / 2)
+            return (self, movedEdges(observed: observed, tile: tile))
+        case .split(let left, let right, let vertical, let ratio):
+            let inLeft = left.contains(id: id)
+            guard inLeft || right.contains(id: id) else { return (self, []) }
+
+            let total = vertical ? rect.width : rect.height
+            let splitPos = constrainedSplitPos(
+                total: total, ratio: ratio,
+                leftRange: left.extentRange(vertical: vertical, gap: gap, constraints: constraints),
+                rightRange: right.extentRange(vertical: vertical, gap: gap, constraints: constraints))
+            let (leftRect, rightRect) = splitRects(rect: rect, vertical: vertical, at: splitPos)
+
+            var newLeft = left, newRight = right
+            var edges: Set<TileEdge>
+            if inLeft {
+                (newLeft, edges) = left.adjustSplits(for: id, observed: observed, rect: leftRect,
+                                                     gap: gap, constraints: constraints)
+            } else {
+                (newRight, edges) = right.adjustSplits(for: id, observed: observed, rect: rightRect,
+                                                       gap: gap, constraints: constraints)
+            }
+
+            var newRatio = ratio
+            let owned = Self.edgeFacingSplit(vertical: vertical, inLeft: inLeft)
+            if edges.remove(owned) != nil {
+                newRatio = ratioPlacing(edge: owned, of: observed, in: rect, gap: gap)
+            }
+            return (.split(left: newLeft, right: newRight, vertical: vertical, ratio: newRatio), edges)
+        }
+    }
+
+    /// Names the edge of a window that lies against the split, given the
+    /// split's axis and which side the window is on.
+    private static func edgeFacingSplit(vertical: Bool, inLeft: Bool) -> TileEdge {
+        switch (vertical, inLeft) {
+        case (true, true):   return .right
+        case (true, false):  return .left
+        case (false, true):  return .bottom
+        case (false, false): return .top
+        }
+    }
+}
+
+private func movedEdges(observed: CGRect, tile: CGRect) -> Set<TileEdge> {
+    var edges = Set<TileEdge>()
+    if abs(observed.minX - tile.minX) > frameTolerance { edges.insert(.left) }
+    if abs(observed.maxX - tile.maxX) > frameTolerance { edges.insert(.right) }
+    if abs(observed.minY - tile.minY) > frameTolerance { edges.insert(.top) }
+    if abs(observed.maxY - tile.maxY) > frameTolerance { edges.insert(.bottom) }
+    return edges
+}
+
+/// Computes the ratio of a split over `rect` that places the split line one
+/// half gap beyond the given edge of the observed frame.
+private func ratioPlacing(edge: TileEdge, of observed: CGRect, in rect: CGRect, gap: CGFloat) -> CGFloat {
+    let total: CGFloat
+    let splitPos: CGFloat
+    switch edge {
+    case .right:  total = rect.width;  splitPos = observed.maxX + gap / 2 - rect.minX
+    case .left:   total = rect.width;  splitPos = observed.minX - gap / 2 - rect.minX
+    case .bottom: total = rect.height; splitPos = observed.maxY + gap / 2 - rect.minY
+    case .top:    total = rect.height; splitPos = observed.minY - gap / 2 - rect.minY
+    }
+    guard total > 2 * minimumSplitExtent else { return 0.5 }
+    let clamped = min(max(splitPos, minimumSplitExtent), total - minimumSplitExtent)
+    return clamped / total
+}

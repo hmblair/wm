@@ -167,7 +167,7 @@ A `CGEvent` tap tracks mouse movement. When the cursor enters a window, it is ra
 
 Windows are arranged in a binary space partition (BSP) tree. New windows are inserted and the screen is recursively split. The layout respects window size constraints: windows with a minimum or maximum size (like System Settings or App Store) are detected reactively and the BSP split ratios are adjusted so constrained windows and their neighbors tile correctly.
 
-Tiling is suspended during Mission Control and while the mouse button is held.
+Tiling is suspended during Mission Control and while the mouse button is held. The exception is a resize: dragging a window's edge or corner moves the split it shares with its neighbors, and the neighbors reflow as you drag.
 
 ### Status bar
 

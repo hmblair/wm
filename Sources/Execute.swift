@@ -16,6 +16,11 @@ private func enforceTileFrames(_ tileFrames: [UInt32: CGRect], label: String = "
     return newConstraint
 }
 
+private func framesToEnforce(_ tileFrames: [UInt32: CGRect], plan: TickPlan) -> [UInt32: CGRect] {
+    guard plan.dragSubject != 0 else { return tileFrames }
+    return tileFrames.filter { $0.key != plan.dragSubject }
+}
+
 func executePlan(_ plan: TickPlan, snap: WorldSnapshot) {
     // 1. Update internal state
     let membershipChanged = managedWindows.count != plan.reconciledWindows.count
@@ -35,19 +40,23 @@ func executePlan(_ plan: TickPlan, snap: WorldSnapshot) {
     if plan.clearPendingWarp {
         pendingWarpToWindow = 0
     }
+    dragSubject = plan.dragSubject
 
     // 2. Move-to-space (async synthetic events)
     if let move = plan.moveToSpace {
         moveWindowToSpace(axWindow: move.axWindow, spaceIndex: move.spaceIndex)
     }
 
-    // 3. Enforce tile frames (skip if mouse down or Mission Control active)
-    if !snap.mouseDown && !snap.missionControlActive {
-        let newConstraint = enforceTileFrames(plan.tileFrames)
+    // 3. Enforce tile frames. Mission Control suspends enforcement. So does a
+    // held mouse button, which lets a window dragged by its title bar follow
+    // the cursor and snap back on release; during a resize, though, every
+    // window except the one being resized reflows live.
+    if !snap.missionControlActive && (!snap.mouseDown || plan.dragSubject != 0) {
+        let newConstraint = enforceTileFrames(framesToEnforce(plan.tileFrames, plan: plan))
         if newConstraint && tilingEnabled {
             let corrected = computeTileFrames(
                 trees: bspTrees, managedWindows: managedWindows, spaceID: snap.spaceID)
-            enforceTileFrames(corrected, label: "correct")
+            enforceTileFrames(framesToEnforce(corrected, plan: plan), label: "correct")
         }
     }
 

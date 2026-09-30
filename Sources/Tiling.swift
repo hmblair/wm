@@ -30,10 +30,7 @@ func computeTileFrames(
     var tileFrames: [UInt32: CGRect] = [:]
 
     // Size constraints are independent of the display, so build the map once.
-    var constraints: [UInt32: (min: CGSize?, max: CGSize?)] = [:]
-    for (id, win) in managedWindows where win.minSize != nil || win.maxSize != nil {
-        constraints[id] = (min: win.minSize, max: win.maxSize)
-    }
+    let constraints = sizeConstraints(of: managedWindows)
 
     for (key, tree) in trees where key.spaceID == spaceID {
         guard let screen = screen(for: key.displayID) else { continue }
@@ -44,6 +41,21 @@ func computeTileFrames(
     }
 
     return tileFrames
+}
+
+func sizeConstraints(of managedWindows: [UInt32: ManagedWindow]) -> BSPTree.SizeConstraints {
+    var constraints: BSPTree.SizeConstraints = [:]
+    for (id, win) in managedWindows where win.minSize != nil || win.maxSize != nil {
+        constraints[id] = (min: win.minSize, max: win.maxSize)
+    }
+    return constraints
+}
+
+/// Identifies the tree that holds the window: the display under its center,
+/// on the given Space.
+func displaySpaceKey(for win: ManagedWindow, spaceID: CGSSpaceID) -> DisplaySpaceKey {
+    let center = CGPoint(x: win.frame.midX, y: win.frame.midY)
+    return DisplaySpaceKey(displayID: displayID(for: center), spaceID: spaceID)
 }
 
 // MARK: - BSP tree management (pure)
