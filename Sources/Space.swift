@@ -25,6 +25,31 @@ private let _SLSCopySpacesForWindows: @convention(c) (CGSConnectionID, UInt32, C
     unsafeBitCast(dlsym(skylight, "SLSCopySpacesForWindows")!, to: (@convention(c) (CGSConnectionID, UInt32, CFArray) -> CFArray?).self)
 }()
 
+private let _SLSWindowQueryWindows: @convention(c) (CGSConnectionID, CFArray, Int32) -> Unmanaged<CFTypeRef>? = {
+    unsafeBitCast(dlsym(skylight, "SLSWindowQueryWindows")!, to: (@convention(c) (CGSConnectionID, CFArray, Int32) -> Unmanaged<CFTypeRef>?).self)
+}()
+
+private let _SLSWindowQueryResultCopyWindows: @convention(c) (CFTypeRef) -> Unmanaged<CFTypeRef>? = {
+    unsafeBitCast(dlsym(skylight, "SLSWindowQueryResultCopyWindows")!, to: (@convention(c) (CFTypeRef) -> Unmanaged<CFTypeRef>?).self)
+}()
+
+private let _SLSWindowIteratorAdvance: @convention(c) (CFTypeRef) -> Bool = {
+    unsafeBitCast(dlsym(skylight, "SLSWindowIteratorAdvance")!, to: (@convention(c) (CFTypeRef) -> Bool).self)
+}()
+
+private let _SLSWindowIteratorGetAttributes: @convention(c) (CFTypeRef) -> UInt64 = {
+    unsafeBitCast(dlsym(skylight, "SLSWindowIteratorGetAttributes")!, to: (@convention(c) (CFTypeRef) -> UInt64).self)
+}()
+
+private let _SLSWindowIteratorGetWindowID: @convention(c) (CFTypeRef) -> UInt32 = {
+    unsafeBitCast(dlsym(skylight, "SLSWindowIteratorGetWindowID")!, to: (@convention(c) (CFTypeRef) -> UInt32).self)
+}()
+
+// SkyLight window attribute that is set while a window is shown on its Space.
+// It is unset for a window that its app has hidden without destroying it, such
+// as a closed window that the app keeps for reuse.
+private let shownWindowAttribute: UInt64 = 0x2
+
 func activeSpaceID() -> CGSSpaceID {
     return _SLSGetActiveSpace(slsConnectionID)
 }
@@ -99,19 +124,77 @@ func postKeyEvent(keyCode: UInt16, flags: CGEventFlags) {
     keyUp.post(tap: .cghidEventTap)
 }
 
-func appNameForSpace(_ spaceID: CGSSpaceID) -> String? {
+// A window at the standard layer and the name of the app that owns it.
+private typealias StandardLayerWindow = (id: UInt32, appName: String)
+
+// Lists the windows at the standard layer on every Space, front to back.
+private func standardLayerWindows() -> [StandardLayerWindow] {
     guard let infoList = CGWindowListCopyWindowInfo(
         [.optionAll, .excludeDesktopElements], kCGNullWindowID
-    ) as? [[String: Any]] else { return nil }
+    ) as? [[String: Any]] else { return [] }
 
-    for info in infoList {
+    return infoList.compactMap { info in
         guard let wid = info[kCGWindowNumber as String] as? UInt32,
               let layer = info[kCGWindowLayer as String] as? Int, layer == standardWindowLayer,
               let name = info[kCGWindowOwnerName as String] as? String
-        else { continue }
-        if spaceForWindow(wid) == spaceID { return name }
+        else { return nil }
+        return (id: wid, appName: name)
     }
-    return nil
+}
+
+// Returns the IDs of the given windows that are shown on their Space.
+private func shownWindowIDs(among windowIDs: [UInt32]) -> Set<UInt32> {
+    guard !windowIDs.isEmpty,
+          let query = _SLSWindowQueryWindows(
+              slsConnectionID, windowIDs as CFArray, Int32(windowIDs.count))?.takeRetainedValue(),
+          let iterator = _SLSWindowQueryResultCopyWindows(query)?.takeRetainedValue()
+    else { return [] }
+
+    var shown: Set<UInt32> = []
+    while _SLSWindowIteratorAdvance(iterator) {
+        if _SLSWindowIteratorGetAttributes(iterator) & shownWindowAttribute != 0 {
+            shown.insert(_SLSWindowIteratorGetWindowID(iterator))
+        }
+    }
+    return shown
+}
+
+// Lists the standard-layer windows that are shown on their Space, front to back.
+private func shownStandardLayerWindows() -> [StandardLayerWindow] {
+    let windows = standardLayerWindows()
+    let shown = shownWindowIDs(among: windows.map { $0.id })
+    return windows.filter { shown.contains($0.id) }
+}
+
+func appNameForSpace(_ spaceID: CGSSpaceID) -> String? {
+    return shownStandardLayerWindows().first { spaceForWindow($0.id) == spaceID }?.appName
+}
+
+// An app and the number of its shown windows on one Space.
+struct AppWindowCount {
+    let appName: String
+    var windowCount: Int
+}
+
+// Returns the apps with shown windows on each Space and their window counts,
+// ordered by each app's frontmost window. Helper windows report no Space, so
+// they are skipped.
+func appWindowCountsBySpace() -> [CGSSpaceID: [AppWindowCount]] {
+    var counts: [CGSSpaceID: [AppWindowCount]] = [:]
+    for window in shownStandardLayerWindows() {
+        guard let space = spaceForWindow(window.id) else { continue }
+        countWindow(of: window.appName, in: &counts[space, default: []])
+    }
+    return counts
+}
+
+// Adds one window to the app's count, and lists the app if it is new.
+private func countWindow(of appName: String, in apps: inout [AppWindowCount]) {
+    if let i = apps.firstIndex(where: { $0.appName == appName }) {
+        apps[i].windowCount += 1
+    } else {
+        apps.append(AppWindowCount(appName: appName, windowCount: 1))
+    }
 }
 
 func moveWindowToSpace(axWindow: AXUIElement, spaceIndex: Int) {

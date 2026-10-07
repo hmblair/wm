@@ -63,36 +63,37 @@ private func renderButtonTitle(item: NSStatusItem, spaces: [SpaceInfo], activeSp
 private func renderMenu(_ menu: NSMenu) {
     let spaces = orderedSpaces()
     let activeSpace = activeSpaceID()
+    let appCounts = appWindowCountsBySpace()
     menu.removeAllItems()
     for (space, desktopNumber) in zip(spaces, desktopNumbers(for: spaces)) {
-        let menuItem = spaceMenuItem(space: space, desktopNumber: desktopNumber)
+        let menuItem = spaceMenuItem(
+            desktopNumber: desktopNumber, apps: appCounts[space.id] ?? [])
         menuItem.state = space.id == activeSpace ? .on : .off
         menu.addItem(menuItem)
     }
 }
 
-private func spaceMenuItem(space: SpaceInfo, desktopNumber: Int?) -> NSMenuItem {
-    guard let desktopNumber else { return fullScreenMenuItem(space: space) }
-    return desktopMenuItem(number: desktopNumber)
+private func spaceMenuItem(desktopNumber: Int?, apps: [AppWindowCount]) -> NSMenuItem {
+    guard let desktopNumber else { return fullScreenMenuItem(appName: apps.first?.appName) }
+    return desktopMenuItem(number: desktopNumber, apps: apps)
 }
 
 // Builds a disabled item that names a full-screen Space's app. The
 // Switch-to-Desktop hotkeys do not reach full-screen Spaces.
-private func fullScreenMenuItem(space: SpaceInfo) -> NSMenuItem {
-    let menuItem = NSMenuItem(
-        title: appNameForSpace(space.id) ?? "Full Screen", action: nil, keyEquivalent: "")
+private func fullScreenMenuItem(appName: String?) -> NSMenuItem {
+    let menuItem = NSMenuItem(title: appName ?? "Full Screen", action: nil, keyEquivalent: "")
     menuItem.isEnabled = false
     return menuItem
 }
 
-// Builds an item that names the desktop as Mission Control does, displays its
+// Builds an item that names the desktop and its apps, displays its
 // Switch-to-Desktop hotkey, and switches to the desktop when clicked. The item
 // is disabled when the desktop is beyond the hotkey range.
-private func desktopMenuItem(number: Int) -> NSMenuItem {
+private func desktopMenuItem(number: Int, apps: [AppWindowCount]) -> NSMenuItem {
     let index = number - 1
     let hasHotkey = index < spaceKeyCodes.count
     let menuItem = NSMenuItem(
-        title: "Desktop \(number)",
+        title: desktopMenuTitle(number: number, apps: apps),
         action: #selector(SpaceMenuTarget.desktopItemClicked(_:)),
         keyEquivalent: hasHotkey ? "\(number)" : "")
     menuItem.keyEquivalentModifierMask = config.keybindings.spaceSwitchModifier.menuModifierFlags
@@ -100,6 +101,21 @@ private func desktopMenuItem(number: Int) -> NSMenuItem {
     menuItem.tag = index
     menuItem.isEnabled = hasHotkey
     return menuItem
+}
+
+// Names the desktop as Mission Control does, followed by its apps in
+// parentheses when it has any.
+private func desktopMenuTitle(number: Int, apps: [AppWindowCount]) -> String {
+    let title = "Desktop \(number)"
+    guard !apps.isEmpty else { return title }
+    return "\(title) (\(apps.map(appLabel).joined(separator: ", ")))"
+}
+
+// Names the app, followed by its window count when it has more than one, as in
+// "Alacritty ×2".
+private func appLabel(_ app: AppWindowCount) -> String {
+    guard app.windowCount > 1 else { return app.appName }
+    return "\(app.appName) ×\(app.windowCount)"
 }
 
 // Switches to the desktop at this zero-based Mission Control index.
