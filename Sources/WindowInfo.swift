@@ -143,5 +143,17 @@ func checkWindowEligibility(entry: CGWindowEntry) -> EligibilityResult {
         return .excluded(reason: "full screen", subrole: subrole)
     }
 
+    guard axSizeIsSettable(of: axWindow) else {
+        return .excluded(reason: "fixed size", subrole: subrole)
+    }
+
     return .manageable(axWindow: axWindow, subrole: subrole)
+}
+
+// Reports whether Accessibility allows the window to be resized. Popups such as
+// autocomplete lists report a standard-window subrole but a fixed size.
+private func axSizeIsSettable(of axWindow: AXUIElement) -> Bool {
+    var settable: DarwinBoolean = false
+    let err = AXUIElementIsAttributeSettable(axWindow, kAXSizeAttribute as CFString, &settable)
+    return err == .success && settable.boolValue
 }
