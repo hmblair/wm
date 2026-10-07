@@ -76,8 +76,8 @@ writeDaemonLockInfo(fd: lockFD, tilingEnabled: tilingEnabled)
 // The tick pipeline commits its results here in executePlan, but several of these
 // are also written elsewhere on the main thread: the event tap updates
 // lastMousePosition and the pending-command queues, reloadConfig replaces config,
-// tick() bumps tickNumber, and the status bar flips statusBarOccupancyDirty. All
-// mutation stays on the main run loop, so there are no data races.
+// and tick() bumps tickNumber. All mutation stays on the main run loop, so
+// there are no data races.
 
 var managedWindows: [UInt32: ManagedWindow] = [:]
 var bspTrees: [DisplaySpaceKey: BSPTree] = [:]

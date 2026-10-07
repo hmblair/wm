@@ -85,7 +85,7 @@ gap = 8
 # How often to poll for window changes, in Hz (default: 60)
 poll_rate = 60
 
-# Show clickable space indicators in the menu bar (default: true)
+# Show the active Space in the menu bar with a dropdown of all Spaces (default: true)
 status_bar = true
 
 # Whether wm manages global macOS settings — native edge-drag tiling,
@@ -171,7 +171,7 @@ Tiling is suspended during Mission Control and while the mouse button is held. T
 
 ### Status bar
 
-Clickable Space indicators appear in the menu bar showing all Spaces. The active Space is displayed in bold. Clicking a number switches to that Space.
+The menu bar shows the active Space. Clicking it opens a dropdown that lists every desktop and full-screen app in Mission Control order. Each desktop shows its Switch-to-Desktop hotkey. The active Space is checked. Clicking a desktop in the list switches to it.
 
 ### Keyboard navigation
 

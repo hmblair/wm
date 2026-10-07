@@ -60,6 +60,17 @@ struct ModifierConfig: Decodable, Equatable {
         return flags
     }
 
+    // NSEvent modifier flags for displaying these modifiers as a menu item's
+    // key equivalent.
+    var menuModifierFlags: NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if cmd { flags.insert(.command) }
+        if shift { flags.insert(.shift) }
+        if ctrl { flags.insert(.control) }
+        if option { flags.insert(.option) }
+        return flags
+    }
+
     // Bitmask in NSEvent's device-independent modifier flags, as stored in the
     // com.apple.symbolichotkeys parameters array.
     var symbolicHotkeyMask: Int {

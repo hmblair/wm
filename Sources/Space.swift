@@ -64,17 +64,28 @@ func orderedSpaceIDs() -> [CGSSpaceID] {
     return orderedSpaces().map { $0.id }
 }
 
-// Returns a display label per Space, in order: desktops get their number, and a
-// native-fullscreen Space gets the first letter of its app's name (or "·" when
-// the app cannot be resolved). Shared by `wm status` and the status bar.
-func spaceLabels(for spaces: [SpaceInfo]) -> [String] {
+// Label for a Space whose app cannot be resolved.
+let unknownSpaceLabel = "·"
+
+// Returns each Space's Mission Control desktop number, in order, or nil for a
+// native-fullscreen Space. Mission Control numbers only desktops.
+func desktopNumbers(for spaces: [SpaceInfo]) -> [Int?] {
     var desktop = 0
     return spaces.map { space in
-        if space.isFullScreen {
-            return appNameForSpace(space.id).flatMap { $0.first.map(String.init) } ?? "·"
-        }
+        if space.isFullScreen { return nil }
         desktop += 1
-        return "\(desktop)"
+        return desktop
+    }
+}
+
+// Returns a display label per Space, in order: desktops get their number, and a
+// native-fullscreen Space gets the first letter of its app's name (or
+// unknownSpaceLabel when the app cannot be resolved). Shared by `wm status` and
+// the status bar.
+func spaceLabels(for spaces: [SpaceInfo]) -> [String] {
+    return zip(spaces, desktopNumbers(for: spaces)).map { space, number in
+        if let number { return "\(number)" }
+        return appNameForSpace(space.id).flatMap { $0.first.map(String.init) } ?? unknownSpaceLabel
     }
 }
 
