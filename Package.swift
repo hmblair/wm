@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "wm",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS("14.4")],
     dependencies: [
         .package(url: "https://github.com/LebJe/TOMLKit.git", from: "0.6.0"),
     ],

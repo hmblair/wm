@@ -86,16 +86,18 @@ private func fullScreenMenuItem(appName: String?) -> NSMenuItem {
     return menuItem
 }
 
-// Builds an item that names the desktop and its apps, displays its
-// Switch-to-Desktop hotkey, and switches to the desktop when clicked. The item
-// is disabled when the desktop is beyond the hotkey range.
+// Builds an item that names the desktop as Mission Control does, lists its apps
+// in the subtitle, displays its Switch-to-Desktop hotkey, and switches to the
+// desktop when clicked. The item is disabled when the desktop is beyond the
+// hotkey range.
 private func desktopMenuItem(number: Int, apps: [AppWindowCount]) -> NSMenuItem {
     let index = number - 1
     let hasHotkey = index < spaceKeyCodes.count
     let menuItem = NSMenuItem(
-        title: desktopMenuTitle(number: number, apps: apps),
+        title: "Desktop \(number)",
         action: #selector(SpaceMenuTarget.desktopItemClicked(_:)),
         keyEquivalent: hasHotkey ? "\(number)" : "")
+    menuItem.subtitle = desktopMenuSubtitle(apps: apps)
     menuItem.keyEquivalentModifierMask = config.keybindings.spaceSwitchModifier.menuModifierFlags
     menuItem.target = SpaceMenuTarget.shared
     menuItem.tag = index
@@ -103,12 +105,11 @@ private func desktopMenuItem(number: Int, apps: [AppWindowCount]) -> NSMenuItem 
     return menuItem
 }
 
-// Names the desktop as Mission Control does, followed by its apps in
-// parentheses when it has any.
-private func desktopMenuTitle(number: Int, apps: [AppWindowCount]) -> String {
-    let title = "Desktop \(number)"
-    guard !apps.isEmpty else { return title }
-    return "\(title) (\(apps.map(appLabel).joined(separator: ", ")))"
+// Lists the desktop's apps, as in "Firefox, Alacritty ×2", or returns nil when
+// the desktop has no windows.
+private func desktopMenuSubtitle(apps: [AppWindowCount]) -> String? {
+    guard !apps.isEmpty else { return nil }
+    return apps.map(appLabel).joined(separator: ", ")
 }
 
 // Names the app, followed by its window count when it has more than one, as in

@@ -4,7 +4,7 @@ A lightweight macOS daemon that provides focus-follows-mouse behavior, a BSP til
 
 ## Requirements
 
-- macOS 13+
+- macOS 14.4+
 - Accessibility permissions (System Settings → Privacy & Security → Accessibility)
 
 ## Install
@@ -171,7 +171,7 @@ Tiling is suspended during Mission Control and while the mouse button is held. T
 
 ### Status bar
 
-The menu bar shows the active Space. Clicking it opens a dropdown that lists every desktop and full-screen app in Mission Control order. Each desktop shows the apps with windows on it, the number of windows for any app with more than one, and its Switch-to-Desktop hotkey. The active Space is checked. Clicking a desktop in the list switches to it.
+The menu bar shows the active Space. Clicking it opens a dropdown that lists every desktop and full-screen app in Mission Control order. Each desktop shows its Switch-to-Desktop hotkey. A second line lists the apps with windows on the desktop, with the number of windows for any app that has more than one. The active Space is checked. Clicking a desktop in the list switches to it.
 
 ### Keyboard navigation
 
