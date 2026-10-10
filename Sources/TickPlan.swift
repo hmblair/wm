@@ -15,6 +15,19 @@ struct WorldSnapshot {
     let rotate: Bool
 }
 
+// The full-screen window that Mission Control draws while it is open, by owner
+// and layer. The Dock draws it up to macOS 26. WindowManager draws it from
+// macOS 27.
+private let missionControlWindows: [(owner: String, layer: Int)] = [
+    ("Dock", 18), ("WindowManager", 19),
+]
+
+func isMissionControlActive(_ cgWindows: [CGWindowEntry]) -> Bool {
+    return cgWindows.contains { entry in
+        missionControlWindows.contains { $0.owner == entry.name && $0.layer == entry.layer }
+    }
+}
+
 func readWorld() -> WorldSnapshot {
     let commands = pendingKeyCommands
     pendingKeyCommands.removeAll()
@@ -23,7 +36,7 @@ func readWorld() -> WorldSnapshot {
     let rotate = pendingRotate
     pendingRotate = false
     let cgWindows = fetchCGWindowList()
-    let missionControl = cgWindows.contains { $0.name == "Dock" && $0.layer == 18 }
+    let missionControl = isMissionControlActive(cgWindows)
     // Poll the live cursor position rather than relying solely on the event
     // tap's mouseMoved events. After a reinstall the re-signed binary's event
     // delivery can take ~20s to be re-validated by the system, but polling the
