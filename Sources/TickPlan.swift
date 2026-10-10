@@ -22,7 +22,7 @@ private let missionControlWindows: [(owner: String, layer: Int)] = [
     ("Dock", 18), ("WindowManager", 19),
 ]
 
-func isMissionControlActive(_ cgWindows: [CGWindowEntry]) -> Bool {
+private func isMissionControlActive(_ cgWindows: [CGWindowEntry]) -> Bool {
     return cgWindows.contains { entry in
         missionControlWindows.contains { $0.owner == entry.name && $0.layer == entry.layer }
     }
