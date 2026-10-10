@@ -179,7 +179,7 @@ Arrow-key bindings allow moving focus between windows, swapping window positions
 
 ### Focus border
 
-When `focus_border` is enabled, a borderless click-through overlay draws an i3-style outline around the focused window, following it across tiling, focus changes, and Spaces. Since macOS exposes no per-window corner radius, wm pins the global window corner radius (`NSConvolutionOverride1`) to `corner_radius` so the outline matches every window's corners. Existing windows adopt a changed radius on their next launch.
+When `focus_border` is enabled, four borderless click-through overlay panels, one for each edge, draw an i3-style outline around the focused window, following it across tiling, focus changes, and Spaces. The outline is split across edge panels because Mission Control omits a window that another window covers completely. Since macOS exposes no per-window corner radius, wm pins the global window corner radius (`NSConvolutionOverride1`) to `corner_radius` so the outline matches every window's corners. Existing windows adopt a changed radius on their next launch.
 
 ### System settings
 
