@@ -1,12 +1,11 @@
 import Cocoa
 
-// An i3-style outline drawn around the focused window. The outline is split
-// across four borderless, click-through overlay panels, one for each edge of
-// the window. Mission Control omits a window that another window covers
-// completely, and an edge panel covers only a thin strip. The panels join every
-// Space and float above normal windows. The tick loop feeds them the focused
-// window's frame each tick, so they track tiling, focus-follows-mouse, and
-// Space changes without any extra bookkeeping.
+// An i3-style outline drawn around the focused window. Four borderless,
+// click-through panels draw the outline, one for each edge, so no panel covers
+// a window completely. Mission Control omits a window that is covered
+// completely. The panels join every Space and float above normal windows. The
+// tick loop feeds them the focused window's frame each tick, so they track
+// tiling, focus-follows-mouse, and Space changes without any extra bookkeeping.
 //
 // The corner radius is a fixed, configurable value rather than something
 // measured per window: macOS exposes no public per-window radius, and on Tahoe
@@ -38,32 +37,69 @@ private func edgeStrip(_ edge: BorderEdge, of size: CGSize) -> CGRect {
     }
 }
 
-// Draws the part of the window's outline that falls inside one edge strip.
+private func largestScreenSize() -> CGSize {
+    return NSScreen.screens.reduce(.zero) { size, screen in
+        CGSize(width: max(size.width, screen.frame.width), height: max(size.height, screen.frame.height))
+    }
+}
+
+// Returns the panel frame for an edge strip, in the window's own coordinates.
+// The panel is as long as the largest screen, so it only moves when the window
+// resizes. After a Space switch, macOS can fail to grow a resized panel's
+// drawing surface. The panel extends down, because macOS moves a window that
+// extends above the screen.
+private func panelFrame(_ edge: BorderEdge, for strip: CGRect) -> CGRect {
+    let length = largestScreenSize()
+    switch edge {
+    case .top, .bottom:
+        return CGRect(x: strip.minX, y: strip.minY, width: length.width, height: strip.height)
+    case .left, .right:
+        return CGRect(x: strip.minX, y: strip.maxY - length.height, width: strip.width, height: length.height)
+    }
+}
+
+// Draws the part of the window's outline that falls inside one edge strip. A
+// shape layer draws the outline, because AppKit can skip the redraw of a panel
+// just after a Space switch.
 private final class BorderView: NSView {
-    // The strip that this view covers, and the size of the window that the
-    // strip belongs to.
-    var strip: CGRect = .zero
-    var windowSize: CGSize = .zero
+    private let outlineLayer = CAShapeLayer()
 
-    override var isFlipped: Bool { false }
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        outlineLayer.fillColor = nil
+        outlineLayer.masksToBounds = true
+        layer?.addSublayer(outlineLayer)
+    }
 
-    override func draw(_ dirtyRect: NSRect) {
-        // The outline is the window's frame, expressed in this view's
-        // coordinates. Stroking a rectangle inset by half the line width draws
-        // the border over the window's outermost pixels (its outer edge flush
-        // with the window edge), rather than extending past it. The stroke
-        // centerline runs borderWidth/2 inside the window edge, so its radius
-        // is the window's corner radius minus that offset — keeping the outline
-        // concentric with the rounded corners.
+    required init?(coder: NSCoder) {
+        fatalError("BorderView does not support coding")
+    }
+
+    // Draws the outline of a window of the given size, clipped to a strip of
+    // that window. The strip and the panel frame are in the window's own
+    // coordinates. The stroke is inset by half its width, so it covers the
+    // window's outermost pixels and stays concentric with the rounded corners.
+    func drawOutline(ofWindowSize windowSize: CGSize, clippedTo strip: CGRect, panelFrame: CGRect) {
         let borderWidth = config.borderWidth
         let outline = CGRect(origin: CGPoint(x: -strip.minX, y: -strip.minY), size: windowSize)
         let rect = outline.insetBy(dx: borderWidth / 2, dy: borderWidth / 2)
-        let radius = max(0, config.cornerRadius - borderWidth / 2)
-        let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
-        path.lineWidth = borderWidth
-        config.borderColor.setStroke()
-        path.stroke()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        outlineLayer.frame = strip.offsetBy(dx: -panelFrame.minX, dy: -panelFrame.minY)
+        outlineLayer.contentsScale = window?.backingScaleFactor ?? 1
+        outlineLayer.path = roundedRectPath(rect, radius: config.cornerRadius - borderWidth / 2)
+        outlineLayer.lineWidth = borderWidth
+        outlineLayer.strokeColor = config.borderColor.cgColor
+        CATransaction.commit()
     }
+}
+
+// Returns a rounded rectangle path. The radius is clamped to the range that
+// CGPath accepts, which is at most half of the shorter side.
+private func roundedRectPath(_ rect: CGRect, radius: CGFloat) -> CGPath {
+    let clamped = min(max(0, radius), rect.width / 2, rect.height / 2)
+    return CGPath(roundedRect: rect, cornerWidth: clamped, cornerHeight: clamped, transform: nil)
 }
 
 private var borderPanels: [BorderEdge: NSPanel] = [:]
@@ -119,15 +155,13 @@ private func hideBorderPanels() {
 }
 
 // Moves the edge's panel to its strip of the window frame, which is in Cocoa
-// coordinates, and redraws it.
+// coordinates, and draws its part of the outline.
 private func placeBorderPanel(_ panel: NSPanel, edge: BorderEdge, around frame: CGRect) {
     let strip = edgeStrip(edge, of: frame.size)
-    if let view = panel.contentView as? BorderView {
-        view.strip = strip
-        view.windowSize = frame.size
-        view.needsDisplay = true
-    }
-    panel.setFrame(strip.offsetBy(dx: frame.minX, dy: frame.minY), display: true)
+    let stripPanelFrame = panelFrame(edge, for: strip)
+    panel.setFrame(stripPanelFrame.offsetBy(dx: frame.minX, dy: frame.minY), display: false)
+    (panel.contentView as? BorderView)?.drawOutline(
+        ofWindowSize: frame.size, clippedTo: strip, panelFrame: stripPanelFrame)
 }
 
 private func placeBorderPanels(around frame: CGRect) {
