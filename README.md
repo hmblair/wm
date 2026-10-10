@@ -56,7 +56,6 @@ The `daemon` command additionally accepts:
 | Flag | Description |
 |------|-------------|
 | `--verbose`, `-v` | Print timestamped debug output to stderr |
-| `--no-tile` | Disable the built-in tiling window manager |
 | `--dump` | Dump window info for the current space and exit |
 
 Run with no command, `wm` reports whether the daemon is running (and its pid), whether auto-start and Accessibility are enabled, the open Spaces with the active one highlighted, attached displays, and the loaded configuration. Colors are emitted only when stdout is a terminal.
@@ -94,12 +93,9 @@ status_bar = true
 # Set false to leave the system untouched.
 manage_system_settings = true
 
-# Draw an i3-style outline around the focused window (default: false)
-focus_border = false
-
 # Border color as a hex string (default: "#89f498"), width in points
 # (default: 1), and corner radius in points (default: 12). The color and
-# width apply only when focus_border is true. On macOS Tahoe, wm pins the
+# width apply only when the focus border is on. On macOS Tahoe, wm pins the
 # global window corner radius (NSConvolutionOverride1) to corner_radius so
 # the outline always hugs the corners; apps pick up the new radius on their
 # next launch. wm reverts it on stop, or run `wm reset`.
@@ -114,6 +110,16 @@ ignored_apps = ["borders", "Hammerspoon", "Alfred", "Raycast"]
 # Apps that participate in focus-follows-mouse behavior but are excluded
 # from tiling (their windows keep whatever size/position they have).
 excluded_apps = ["Stickies"]
+
+[features]
+# Arrange windows in a BSP layout (default: true)
+tiling = true
+
+# Focus the window under the cursor (default: true)
+focus_follows_mouse = true
+
+# Draw an i3-style outline around the focused window (default: false)
+focus_border = false
 
 [keybindings]
 # Set to false to disable all built-in keybindings (default: true)
@@ -159,6 +165,8 @@ Each modifier is a combination of `cmd`, `shift`, `ctrl`, and `option` (all `fal
 
 ## Features
 
+Tiling, focus follows mouse, and the focus border can each be turned on and off while the daemon runs. The `tiling`, `focus_follows_mouse`, and `focus_border` fields of the `[features]` config table set them at start. Saving a changed field applies it immediately. The Features submenu of the status bar dropdown toggles each one and saves the new value to the config file. The daemon rewrites the file to do so, which removes any comments in it. `wm` with no command reports which features are on.
+
 ### Focus follows mouse
 
 A `CGEvent` tap tracks mouse movement. When the cursor enters a window, it is raised and focused via the Accessibility API. When the cursor moves to the desktop, focus is released to Finder.
@@ -171,7 +179,7 @@ Tiling is suspended during Mission Control and while the mouse button is held. T
 
 ### Status bar
 
-The menu bar shows the active Space. Clicking it opens a dropdown that lists every desktop and full-screen app in Mission Control order. Each desktop shows its Switch-to-Desktop hotkey. A second line lists the apps with windows on the desktop, with the number of windows for any app that has more than one. The active Space is checked. Clicking a desktop in the list switches to it.
+The menu bar shows the active Space. Clicking it opens a dropdown that lists every desktop and full-screen app in Mission Control order. Each desktop shows its Switch-to-Desktop hotkey. A second line lists the apps with windows on the desktop, with the number of windows for any app that has more than one. The active Space is checked. Clicking a desktop in the list switches to it. Below the list, the Features submenu has a checked item for each feature that is on. Clicking an item toggles the feature.
 
 ### Keyboard navigation
 
@@ -179,7 +187,7 @@ Arrow-key bindings allow moving focus between windows, swapping window positions
 
 ### Focus border
 
-When `focus_border` is enabled, four borderless click-through overlay panels, one for each edge, draw an i3-style outline around the focused window, following it across tiling, focus changes, and Spaces. The outline is split across edge panels because Mission Control omits a window that another window covers completely. Since macOS exposes no per-window corner radius, wm pins the global window corner radius (`NSConvolutionOverride1`) to `corner_radius` so the outline matches every window's corners. Existing windows adopt a changed radius on their next launch.
+When the focus border is on, four borderless click-through overlay panels, one for each edge, draw an i3-style outline around the focused window, following it across tiling, focus changes, and Spaces. The outline is split across edge panels because Mission Control omits a window that another window covers completely. Since macOS exposes no per-window corner radius, wm pins the global window corner radius (`NSConvolutionOverride1`) to `corner_radius` so the outline matches every window's corners. Existing windows adopt a changed radius on their next launch.
 
 ### System settings
 

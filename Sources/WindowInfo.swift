@@ -89,7 +89,7 @@ func getFocusedWindow(cgWindows: [CGWindowEntry]) -> Window? {
 
     // Only the focus border consumes this, so skip the extra AX read otherwise.
     var isFullScreen = false
-    if config.focusBorder {
+    if isEnabled(.focusBorder) {
         var fsRef: CFTypeRef?
         if AXUIElementCopyAttributeValue(axWindow, "AXFullScreen" as CFString, &fsRef) == .success {
             isFullScreen = (fsRef as? Bool) == true

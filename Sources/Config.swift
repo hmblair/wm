@@ -142,7 +142,8 @@ struct Config: Decodable {
     // switch-to-Desktop shortcuts, window corner radius). Applied on start and
     // reverted on clean stop / `wm reset`. Set false to leave the system alone.
     var manageSystemSettings: Bool = true
-    var focusBorder: Bool = false
+    // The features that the features table turns on.
+    var features: Set<Feature> = Feature.enabledByDefault
     var borderColor: NSColor = defaultBorderColor
     var borderWidth: CGFloat = 1
     // Corner radius. wm pins the global window corner radius
@@ -190,8 +191,8 @@ struct Config: Decodable {
         if let v = try? container.decode(Bool.self, forKey: .manageSystemSettings) {
             manageSystemSettings = v
         }
-        if let v = try? container.decode(Bool.self, forKey: .focusBorder) {
-            focusBorder = v
+        if let v = try? container.nestedContainer(keyedBy: Feature.self, forKey: .features) {
+            features = decodeFeatures(from: v)
         }
         if let v = try? container.decode(String.self, forKey: .borderColor),
            let color = nsColor(fromHex: v) {
@@ -218,7 +219,7 @@ struct Config: Decodable {
         case prefer
         case keybindings
         case manageSystemSettings = "manage_system_settings"
-        case focusBorder = "focus_border"
+        case features
         case borderColor = "border_color"
         case borderWidth = "border_width"
         case cornerRadius = "corner_radius"
@@ -239,5 +240,24 @@ func loadConfig(from path: String = Config.defaultPath, fallbackOnError: Config?
     } catch {
         warn("config: failed to parse \(path): \(error) — \(fallbackOnError != nil ? "keeping current config" : "using defaults")")
         return fallbackOnError ?? Config()
+    }
+}
+
+// Sets one feature's field in the features table of the config file. Creates
+// the table and the file when they are missing. A file that fails to parse
+// stays as it is.
+func writeFeatureField(_ feature: Feature, _ value: Bool, to path: String = Config.defaultPath) {
+    let key = Config.CodingKeys.features.rawValue
+    do {
+        let contents = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+        let table = try TOMLTable(string: contents)
+        let features = table[key]?.table ?? TOMLTable()
+        features[feature.rawValue] = value
+        table[key] = features
+        let directory = (path as NSString).deletingLastPathComponent
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        try (table.convert(to: .toml) + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+    } catch {
+        warn("config: failed to write \(feature.rawValue) to \(path): \(error)")
     }
 }

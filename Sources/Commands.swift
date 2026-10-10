@@ -5,7 +5,7 @@ func computeSwap(
     managed: ManagedWindow, direction: Direction,
     spaceID: CGSSpaceID, plan: inout TickPlan
 ) {
-    guard tilingEnabled else { return }
+    guard isEnabled(.tiling) else { return }
 
     let focusCenter = CGPoint(x: managed.frame.midX, y: managed.frame.midY)
     let did = displayID(for: focusCenter)
@@ -41,6 +41,7 @@ func computeFocus(
 }
 
 func computeMouseFocus(snap: WorldSnapshot, plan: inout TickPlan) {
+    guard isEnabled(.focusFollowsMouse) else { return }
     guard let hit = windowUnderCursor(snap: snap, plan: plan) else {
         computeDesktopUnfocus(snap: snap, plan: &plan)
         return

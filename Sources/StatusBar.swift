@@ -44,7 +44,7 @@ func updateStatusBar(activeSpace: CGSSpaceID) {
 private func makeSpaceMenu() -> NSMenu {
     let menu = NSMenu()
     menu.autoenablesItems = false
-    menu.delegate = SpaceMenuTarget.shared
+    menu.delegate = StatusMenuTarget.shared
     return menu
 }
 
@@ -59,7 +59,8 @@ private func renderButtonTitle(item: NSStatusItem, spaces: [SpaceInfo], activeSp
     )
 }
 
-// Rebuilds the dropdown with one item per Space, in Mission Control order.
+// Rebuilds the dropdown with one item per Space, in Mission Control order,
+// followed by the Features submenu.
 private func renderMenu(_ menu: NSMenu) {
     let spaces = orderedSpaces()
     let activeSpace = activeSpaceID()
@@ -71,6 +72,32 @@ private func renderMenu(_ menu: NSMenu) {
         menuItem.state = space.id == activeSpace ? .on : .off
         menu.addItem(menuItem)
     }
+    menu.addItem(.separator())
+    menu.addItem(featuresMenuItem())
+}
+
+// Builds the item that opens a submenu with one item per feature.
+private func featuresMenuItem() -> NSMenuItem {
+    let submenu = NSMenu()
+    for feature in Feature.allCases {
+        submenu.addItem(featureMenuItem(feature))
+    }
+    let menuItem = NSMenuItem(title: "Features", action: nil, keyEquivalent: "")
+    menuItem.submenu = submenu
+    return menuItem
+}
+
+// Builds an item that is checked while the feature is on and toggles the
+// feature when clicked.
+private func featureMenuItem(_ feature: Feature) -> NSMenuItem {
+    let menuItem = NSMenuItem(
+        title: feature.title,
+        action: #selector(StatusMenuTarget.featureItemClicked(_:)),
+        keyEquivalent: "")
+    menuItem.target = StatusMenuTarget.shared
+    menuItem.representedObject = feature
+    menuItem.state = isEnabled(feature) ? .on : .off
+    return menuItem
 }
 
 private func spaceMenuItem(desktopNumber: Int?, apps: [AppWindowCount]) -> NSMenuItem {
@@ -95,11 +122,11 @@ private func desktopMenuItem(number: Int, apps: [AppWindowCount]) -> NSMenuItem 
     let hasHotkey = index < spaceKeyCodes.count
     let menuItem = NSMenuItem(
         title: "Desktop \(number)",
-        action: #selector(SpaceMenuTarget.desktopItemClicked(_:)),
+        action: #selector(StatusMenuTarget.desktopItemClicked(_:)),
         keyEquivalent: hasHotkey ? "\(number)" : "")
     menuItem.subtitle = desktopMenuSubtitle(apps: apps)
     menuItem.keyEquivalentModifierMask = config.keybindings.spaceSwitchModifier.menuModifierFlags
-    menuItem.target = SpaceMenuTarget.shared
+    menuItem.target = StatusMenuTarget.shared
     menuItem.tag = index
     menuItem.isEnabled = hasHotkey
     return menuItem
@@ -126,13 +153,18 @@ func switchToDesktop(_ index: Int) {
                  flags: config.keybindings.spaceSwitchModifier.eventFlags)
 }
 
-private class SpaceMenuTarget: NSObject, NSMenuDelegate {
-    static let shared = SpaceMenuTarget()
+private class StatusMenuTarget: NSObject, NSMenuDelegate {
+    static let shared = StatusMenuTarget()
 
     func menuNeedsUpdate(_ menu: NSMenu) { renderMenu(menu) }
 
     @objc func desktopItemClicked(_ sender: NSMenuItem) {
         debug("statusbar: clicked desktop \(sender.tag + 1)")
         switchToDesktop(sender.tag)
+    }
+
+    @objc func featureItemClicked(_ sender: NSMenuItem) {
+        guard let feature = sender.representedObject as? Feature else { return }
+        toggleFeature(feature)
     }
 }

@@ -29,11 +29,11 @@ private struct DaemonInfo {
     var running = false
     var pid: pid_t?
     var accessibility: Bool?  // nil when unknown
-    var tiling: Bool?
+    var features: [Feature: Bool] = [:]  // empty when unknown
 }
 
 /// The daemon holds an exclusive flock on the lock file for its lifetime and
-/// records its pid, Accessibility grant, and tiling mode there as key=value
+/// records its pid, Accessibility grant, and features there as key=value
 /// lines. A separate process can therefore tell whether the daemon is running
 /// (the lock can't be acquired) and read its self-reported state.
 private func daemonStatus() -> DaemonInfo {
@@ -55,11 +55,12 @@ private func daemonStatus() -> DaemonInfo {
         let kv = line.split(separator: "=", maxSplits: 1)
         guard kv.count == 2 else { continue }
         let value = kv[1].trimmingCharacters(in: .whitespaces)
-        switch kv[0].trimmingCharacters(in: .whitespaces) {
+        let key = kv[0].trimmingCharacters(in: .whitespaces)
+        switch key {
         case "pid":           info.pid = pid_t(value)
         case "accessibility": info.accessibility = (value == "1")
-        case "tiling":        info.tiling = (value == "1")
-        default:              break
+        default:
+            if let feature = Feature(rawValue: key) { info.features[feature] = (value == "1") }
         }
     }
     return info
@@ -67,8 +68,10 @@ private func daemonStatus() -> DaemonInfo {
 
 // MARK: - `wm status`
 
+private let rowLabelWidth = 21
+
 private func row(_ label: String, _ value: String) {
-    let padded = label.padding(toLength: 15, withPad: " ", startingAt: 0)
+    let padded = label.padding(toLength: rowLabelWidth, withPad: " ", startingAt: 0)
     print("  \(Style.grey(padded))\(value)")
 }
 
@@ -96,8 +99,9 @@ private func printDaemonRows(_ info: DaemonInfo) {
     case .none:        row("Accessibility", Style.grey("unknown"))
     }
 
-    if let tiling = info.tiling {
-        row("Tiling", tiling ? Style.green("on") : Style.grey("off"))
+    for feature in Feature.allCases {
+        guard let enabled = info.features[feature] else { continue }
+        row(feature.title, enabled ? Style.green("on") : Style.grey("off"))
     }
 }
 

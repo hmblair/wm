@@ -50,7 +50,7 @@ func executePlan(_ plan: TickPlan, snap: WorldSnapshot) {
     // window except the one being resized reflows live.
     if !snap.missionControlActive && (!snap.mouseDown || plan.dragSubject != 0) {
         let newConstraint = enforceTileFrames(framesToEnforce(plan.tileFrames, plan: plan))
-        if newConstraint && tilingEnabled {
+        if newConstraint && isEnabled(.tiling) {
             let corrected = computeTileFrames(
                 trees: bspTrees, managedWindows: managedWindows, spaceID: snap.spaceID)
             enforceTileFrames(framesToEnforce(corrected, plan: plan), label: "correct")
@@ -74,7 +74,7 @@ func executePlan(_ plan: TickPlan, snap: WorldSnapshot) {
     // frame from the window itself, so this tracks wm's own moves without a
     // one-tick lag; an unmanaged window (a dialog, an excluded app) has no
     // enforced frame and falls back to the snapshot.
-    if config.focusBorder {
+    if isEnabled(.focusBorder) {
         let frame = snap.focusedWindow.flatMap { focused -> CGRect? in
             // No outline on native-fullscreen windows.
             if focused.isFullScreen { return nil }

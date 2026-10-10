@@ -56,13 +56,16 @@ func acquireDaemonLock() -> Int32 {
 }
 
 // Records runtime info in the lock file so `wm status` (a separate process) can
-// report the daemon's pid, Accessibility grant, and tiling mode. The CLI can't
+// report the daemon's pid, Accessibility grant, and features. The CLI can't
 // query the daemon's Accessibility itself: AXIsProcessTrusted reflects the
 // invoking process, not the launchd-launched app, so only the daemon knows.
-func writeDaemonLockInfo(fd: Int32, tilingEnabled: Bool) {
-    let info = "pid=\(getpid())\naccessibility=\(AXIsProcessTrusted() ? 1 : 0)\ntiling=\(tilingEnabled ? 1 : 0)\n"
+func writeDaemonLockInfo(fd: Int32, enabledFeatures: Set<Feature>) {
+    let featureLines = Feature.allCases.map {
+        "\($0.rawValue)=\(enabledFeatures.contains($0) ? 1 : 0)\n"
+    }.joined()
+    let info = "pid=\(getpid())\naccessibility=\(AXIsProcessTrusted() ? 1 : 0)\n" + featureLines
     ftruncate(fd, 0)
-    _ = info.withCString { write(fd, $0, strlen($0)) }
+    _ = info.withCString { pwrite(fd, $0, strlen($0), 0) }
 }
 
 func daemonIsRunning() -> Bool {

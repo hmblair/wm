@@ -23,7 +23,6 @@ func printUsage(_ stream: UnsafeMutablePointer<FILE> = stdout) {
 
     daemon flags (with 'wm daemon'):
       --verbose, -v    Print timestamped debug output to stderr
-      --no-tile        Disable the tiling window manager
 
     """, stream)
 }
@@ -54,7 +53,7 @@ case .some(let cmd):
 }
 
 // From here on we run as the daemon: `wm daemon [flags]`.
-let knownArgs: Set<String> = ["daemon", "--verbose", "-v", "--no-tile"]
+let knownArgs: Set<String> = ["daemon", "--verbose", "-v"]
 for arg in CommandLine.arguments.dropFirst() {
     if !knownArgs.contains(arg) {
         fputs("unknown argument: \(arg)\n", stderr)
@@ -67,10 +66,11 @@ for arg in CommandLine.arguments.dropFirst() {
 let lockFD = acquireDaemonLock()
 
 let verbose = CommandLine.arguments.contains("--verbose") || CommandLine.arguments.contains("-v")
-let tilingEnabled = !CommandLine.arguments.contains("--no-tile")
 var config = loadConfig()
 
-writeDaemonLockInfo(fd: lockFD, tilingEnabled: tilingEnabled)
+enabledFeatures = config.features
+
+writeDaemonLockInfo(fd: lockFD, enabledFeatures: enabledFeatures)
 
 // --- Global state ---
 // The tick pipeline commits its results here in executePlan, but several of these
@@ -132,10 +132,10 @@ func reloadConfig() {
     let newConfig = loadConfig(fallbackOnError: config)
     let intervalChanged = newConfig.pollInterval != config.pollInterval
     let statusBarChanged = newConfig.statusBar != config.statusBar
-    let focusBorderChanged = newConfig.focusBorder != config.focusBorder
     let borderStyleChanged = newConfig.borderColor != config.borderColor
         || newConfig.borderWidth != config.borderWidth
         || newConfig.cornerRadius != config.cornerRadius
+    let oldConfig = config
     log("config: reloaded")
     config = newConfig
     if intervalChanged {
@@ -146,10 +146,8 @@ func reloadConfig() {
         log("config: status bar → \(config.statusBar ? "on" : "off")")
         if config.statusBar { setupStatusBar() } else { teardownStatusBar() }
     }
-    if focusBorderChanged {
-        log("config: focus border → \(config.focusBorder ? "on" : "off")")
-        if config.focusBorder { setupFocusBorder() } else { teardownFocusBorder() }
-    } else if config.focusBorder && borderStyleChanged {
+    applyFeatureConfigChanges(from: oldConfig, to: config)
+    if isEnabled(.focusBorder) && borderStyleChanged {
         refreshFocusBorderStyle()
     }
     // Re-apply managed system settings so corner radius and the Switch-to-Desktop
@@ -279,7 +277,7 @@ func tick() {
 installPollTimer()
 
 if config.statusBar { setupStatusBar() }
-if config.focusBorder { setupFocusBorder() }
+Feature.allCases.forEach(applyFeatureState)
 applySystemSettings()
 log("running\(verbose ? " (verbose)" : "")")
 NSApplication.shared.run()

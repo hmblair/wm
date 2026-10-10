@@ -108,7 +108,7 @@ func computePlan(_ snap: WorldSnapshot) -> TickPlan {
     computeDragResize(snap: snap, plan: &plan)
 
     // 5. Compute tile frames from final trees
-    if tilingEnabled {
+    if isEnabled(.tiling) {
         plan.tileFrames = computeTileFrames(
             trees: plan.updatedTrees,
             managedWindows: plan.reconciledWindows,
@@ -169,7 +169,7 @@ private func computeKeyCommands(snap: WorldSnapshot, plan: inout TickPlan) {
 
 // Rotates the split above the focused window and warps to it afterwards.
 private func computeRotate(snap: WorldSnapshot, plan: inout TickPlan) {
-    guard tilingEnabled, let focused = snap.focusedWindow,
+    guard isEnabled(.tiling), let focused = snap.focusedWindow,
           let managed = resolveManaged(for: focused, in: plan.reconciledWindows) else { return }
     let key = displaySpaceKey(for: managed, spaceID: snap.spaceID)
     if let tree = plan.updatedTrees[key],
@@ -210,7 +210,7 @@ private let resizeHandleMargin: CGFloat = 10
 // neighbors reflow live. The release tick applies the final edges and clears
 // the subject, so enforcement snaps the window itself to its tile.
 private func computeDragResize(snap: WorldSnapshot, plan: inout TickPlan) {
-    guard tilingEnabled else { return }
+    guard isEnabled(.tiling) else { return }
     let tracked = plan.reconciledWindows[dragSubject]
     guard let subject = tracked ?? (snap.mouseDown ? findDragSubject(snap: snap, plan: plan) : nil)
     else { return }
@@ -263,8 +263,9 @@ private func computeDeferredWarps(plan: inout TickPlan) {
 }
 
 // When focus moves to a managed window outside our control (e.g. Cmd+Tab),
-// warps the mouse to it so the focus-follows-mouse pass doesn't immediately
-// steal it back. Only follows managed windows: a modal sheet or dialog is
+// records it as the focused window. With focus follows mouse on, also warps
+// the mouse to it so the focus-follows-mouse pass doesn't immediately steal
+// it back. Only follows managed windows: a modal sheet or dialog is
 // unmanaged, and warping to its frame would snap the cursor to the center of
 // the subwindow whenever the user just moves the mouse toward the parent window.
 private func computeExternalFocusFollow(snap: WorldSnapshot, plan: inout TickPlan) {
@@ -272,6 +273,6 @@ private func computeExternalFocusFollow(snap: WorldSnapshot, plan: inout TickPla
           focused.id != lastFocusedWindow && lastFocusedWindow != 0,
           let frame = plan.tileFrames[focused.id] ?? plan.reconciledWindows[focused.id]?.frame
     else { return }
-    plan.warpTo = frame
+    if isEnabled(.focusFollowsMouse) { plan.warpTo = frame }
     plan.newLastFocusedWindow = focused.id
 }
